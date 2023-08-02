@@ -1,4 +1,5 @@
 import pgnet
+from collections import deque
 import kvex as kx
 from pgnet import Packet, Response
 from logic import (
@@ -15,6 +16,7 @@ class GameServer(pgnet.Game):
     def __init__(self, *args, **kwargs):
         self.state = GameState()
         self.player_names = set()
+        self.last_rolls = deque()
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)
         kx.kv.App.get_running_app().set_theme("midnight")
@@ -48,6 +50,7 @@ class GameServer(pgnet.Game):
         payload = dict(
             state_hash=state_hash,
             state=state,
+            last_rolls=list(self.last_rolls),
             player_names=tuple(self.player_names),
         )
         return Response("Updated state.", payload)
@@ -60,6 +63,13 @@ class GameServer(pgnet.Game):
         method = getattr(self, method_name)
         return method(packet)
 
+    def _get_dice_roll(self):
+        roll = get_dice_roll()
+        self.last_rolls.appendleft(roll)
+        if len(self.last_rolls) > 5:
+            self.last_rolls.pop()
+        return roll
+
     def _autoplay(self):
         player_idx = self.state.turn % PLAYER_COUNT
         player = self.state.players[player_idx]
@@ -70,7 +80,7 @@ class GameServer(pgnet.Game):
             unit.track = Track.MAIN
             unit.position = STARTING_POSITIONS[player_idx]
         elif unit.track == Track.MAIN:
-            unit.position += get_dice_roll()
+            unit.position += self._get_dice_roll()
             if unit.position - STARTING_POSITIONS[player_idx] >= TRACK_SIZE:
                 unit.track = Track.END
         self.state.turn += 1

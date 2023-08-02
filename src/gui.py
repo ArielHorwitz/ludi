@@ -46,6 +46,7 @@ class GameWidget(kx.XFrame):
         self.state_hash = None
         self.state = GameState()
         self.player_names = set()
+        self.last_rolls = list()
         self.server_response = "Awaiting request."
         super().__init__(**kwargs)
         self.client = client
@@ -66,6 +67,7 @@ class GameWidget(kx.XFrame):
             self._refresh_widgets()
             return
         self.state = GameState.from_json(state)
+        self.last_rolls = heartbeat_response.payload.get("last_rolls")
         print(f"New game state ({hash(self.state)})")
         self._refresh_widgets()
 
@@ -110,6 +112,7 @@ class GameWidget(kx.XFrame):
                 self.client.game,
                 "\n",
                 fg2("[u][b]Info[/b][/u]"),
+                f"Last rolls: {self.last_rolls}",
                 f"Turn: {self.state.turn}",
                 f"Players: {len(self.player_names)}",
                 player_names,
