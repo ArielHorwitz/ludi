@@ -1,7 +1,7 @@
 import kvex as kx
 import pgnet
 import math
-from logic import GameState, BOARD_SIZE, Position, UNIT_COUNT, TRACK_SIZE
+from logic import GameState, BOARD_SIZE, UNIT_COUNT, Position
 from functools import partial
 
 
@@ -24,7 +24,6 @@ COMPLETED = (
 
 
 def _track_to_coords(track_position: int) -> (int, int):
-    track_position %= TRACK_SIZE
     quarter = track_position // (BOARD_SIZE)
     offset = track_position % (BOARD_SIZE)
     if quarter == 0:
@@ -57,7 +56,7 @@ class GameWidget(kx.XFrame):
         for i in range(UNIT_COUNT):
             one_index = str(i + 1)
             control = f"move {one_index}"
-            hotkeys.register(control, one_index)        # Number key
+            hotkeys.register(control, one_index)  # Number key
             hotkeys.register(control, f"f{one_index}")  # F# key
             hotkeys.bind(control, partial(self._user_move, i))
         client.on_heartbeat = self.on_heartbeat
@@ -149,7 +148,7 @@ class GameWidget(kx.XFrame):
                 unit_idx = UNIT_COUNT - rev_unit_idx - 1
                 accent = False
                 if unit.position == Position.TRACK:
-                    x, y = _track_to_coords(unit.track_position)
+                    x, y = _track_to_coords(unit.get_position(player_idx))
                     accent = True
                 elif unit.position == Position.SPAWN:
                     x, y = SPAWNS[player_idx]

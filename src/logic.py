@@ -5,13 +5,14 @@ from enum import Enum
 
 
 BOARD_SIZE = 12
-BOARD_END = BOARD_SIZE - 1
-TRACK_SIZE = BOARD_SIZE * 4
-PLAYER_COUNT = 4
 UNIT_COUNT = 4
 DICE_COUNT = 1
 ROLL_MIN = 1
 ROLL_MAX = 6
+BOARD_END = BOARD_SIZE - 1
+TRACK_SIZE = BOARD_SIZE * 4
+PLAYER_COUNT = 4
+RESCUE_ROLLS = frozenset([ROLL_MIN])
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2
 STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
 TURN_ORDER_HANDICAP = tuple(
@@ -30,10 +31,14 @@ class Position(Enum):
 class Unit:
     index: int
     position: Position = Position.SPAWN
-    track_position: int = 0
+    track_distance: int = 0
 
     def __hash__(self) -> int:
-        return hash((self.index, self.position, self.track_position))
+        return hash((self.index, self.position, self.track_distance))
+
+    def get_position(self, player_index: int):
+        track_position = self.track_distance + STARTING_POSITIONS[player_index]
+        return track_position % TRACK_SIZE
 
 
 @dataclass_json
@@ -66,8 +71,7 @@ class GameState:
         for player in game.players:
             unit = player.units[0]
             unit.position = Position.TRACK
-            handicap = TURN_ORDER_HANDICAP[player.index]
-            unit.track_position = STARTING_POSITIONS[player.index] + handicap
+            unit.track_distance = TURN_ORDER_HANDICAP[player.index]
         return game
 
     def __hash__(self) -> int:
@@ -100,19 +104,20 @@ class GameState:
         if unit.position == Position.FINISH:
             return "Units that finished cannot move"
         elif unit.position == Position.SPAWN:
-            if die_value != ROLL_MIN:
-                return f"Units in spawn can only move with a {ROLL_MIN}"
+            if die_value not in RESCUE_ROLLS:
+                rescue = ", ".join(str(r) for r in RESCUE_ROLLS)
+                return f"Units in spawn can be rescued with: {rescue}"
             player.dice.pop(die_index)
             unit.position = Position.TRACK
-            unit.track_position = STARTING_POSITIONS[player.index]
-            return f"Moved on #{unit.index + 1} to track"
+            unit.track_distance = 0
+            return f"Rescued #{unit.index + 1}"
         else:
             # Units on track can always use any die
             assert unit.position == Position.TRACK
             player.dice.pop(die_index)
-            unit.track_position += die_value
+            unit.track_distance += die_value
             response = f"Moved +{die_value}"
-            captured = self._capture(player.index, unit.track_position)
+            captured = self._capture(player.index, unit.get_position(player.index))
             if captured:
                 captured_repr = " ".join([f"({p + 1},{u + 1})" for p, u in captured])
                 response = f"{response}, captured {captured_repr}"
@@ -126,7 +131,6 @@ class GameState:
         player_index: int,
         capture_position: int,
     ) -> list[tuple[int, int]]:
-        capture_position %= TRACK_SIZE
         if capture_position in STARTING_POSITIONS:
             return []
         captured = []
@@ -135,10 +139,10 @@ class GameState:
                 # Ignore friendly units
                 continue
             for unit in player.units:
-                if capture_position == unit.track_position % TRACK_SIZE:
+                if capture_position == unit.get_position(player.index):
                     # Capture
                     unit.position = Position.SPAWN
-                    unit.track_position = STARTING_POSITIONS[player.index]
+                    unit.track_distance = 0
                     captured.append((player.index, unit.index))
             # Leave at least one unit per player on the track
             if all(unit.position != Position.TRACK for unit in player.units):
@@ -146,6 +150,6 @@ class GameState:
                     if unit.position == Position.SPAWN:
                         # Rescue
                         unit.position = Position.TRACK
-                        unit.track_position = STARTING_POSITIONS[player.index]
+                        unit.track_distance = 0
                         break
         return captured
