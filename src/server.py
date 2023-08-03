@@ -1,22 +1,13 @@
 import pgnet
-from collections import deque
 import kvex as kx
-from pgnet import Packet, Response
-from logic import (
-    GameState,
-    Track,
-    PLAYER_COUNT,
-    TRACK_SIZE,
-    STARTING_POSITIONS,
-    get_dice_roll,
-)
+from pgnet import Packet, Response, Status
+from logic import GameState
 
 
 class GameServer(pgnet.Game):
     def __init__(self, *args, **kwargs):
-        self.state = GameState()
+        self.state = GameState.new_game()
         self.player_names = set()
-        self.last_rolls = deque()
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)
         kx.kv.App.get_running_app().set_theme("midnight")
@@ -50,7 +41,6 @@ class GameServer(pgnet.Game):
         payload = dict(
             state_hash=state_hash,
             state=state,
-            last_rolls=list(self.last_rolls),
             player_names=tuple(self.player_names),
         )
         return Response("Updated state.", payload)
@@ -58,35 +48,18 @@ class GameServer(pgnet.Game):
     def handle_game_packet(self, packet: Packet) -> Response:
         method_name = f"_user_{packet.message}"
         if not hasattr(self, method_name):
-            self._autoplay()
-            return Response(f"No such command: `{packet.message}`")
+            return Response(
+                f"No such command: `{packet.message}`",
+                status=Status.UNEXPECTED,
+            )
         method = getattr(self, method_name)
         return method(packet)
 
-    def _get_dice_roll(self):
-        roll = get_dice_roll()
-        self.last_rolls.appendleft(roll)
-        if len(self.last_rolls) > 5:
-            self.last_rolls.pop()
-        return roll
-
-    def _autoplay(self):
-        player_idx = self.state.turn % PLAYER_COUNT
-        player = self.state.players[player_idx]
-        for unit in player.units:
-            if unit.track != Track.END:
-                break
-        if unit.track == Track.START:
-            unit.track = Track.MAIN
-            unit.position = STARTING_POSITIONS[player_idx]
-        elif unit.track == Track.MAIN:
-            unit.position += self._get_dice_roll()
-            if unit.position - STARTING_POSITIONS[player_idx] >= TRACK_SIZE:
-                unit.track = Track.END
-        self.state.turn += 1
-
     # User commands
-    def _user_autoplay(self, packet: Packet) -> Response:
-        turn = self.state.turn
-        self._autoplay()
-        return Response(f"Played turn {turn}")
+    def _user_roll(self, packet: Packet) -> Response:
+        return Response(self.state.roll_dice())
+
+    def _user_move(self, packet: Packet) -> Response:
+        unit_index = int(packet.payload.get("unit_index", -1))
+        die_index = int(packet.payload.get("die_index", -1))
+        return Response(self.state.move_unit(unit_index, die_index))

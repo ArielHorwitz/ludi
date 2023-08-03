@@ -2,6 +2,7 @@ import kvex as kx
 import pgnet
 import math
 from logic import GameState, BOARD_SIZE, Track, UNIT_COUNT, TRACK_SIZE
+from functools import partial
 
 
 BOARD_END = BOARD_SIZE - 1
@@ -46,13 +47,19 @@ class GameWidget(kx.XFrame):
         self.state_hash = None
         self.state = GameState()
         self.player_names = set()
-        self.last_rolls = list()
-        self.server_response = "Awaiting request."
+        self.server_response = pgnet.Response("Awaiting request.")
         super().__init__(**kwargs)
         self.client = client
         self._make_widgets()
-        self.app.game_controller.register("leave", "^ escape", self.client.leave_game)
-        self.app.game_controller.register("autoplay", "spacebar", self._user_autoplay)
+        hotkeys = self.app.game_controller
+        hotkeys.register("leave", "^ escape", self.client.leave_game)
+        hotkeys.register("roll", "spacebar", self._user_roll)
+        for i in range(UNIT_COUNT):
+            one_index = str(i + 1)
+            control = f"move {one_index}"
+            hotkeys.register(control, one_index)        # Number key
+            hotkeys.register(control, f"f{one_index}")  # F# key
+            hotkeys.bind(control, partial(self._user_move, i))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
 
@@ -67,7 +74,6 @@ class GameWidget(kx.XFrame):
             self._refresh_widgets()
             return
         self.state = GameState.from_json(state)
-        self.last_rolls = heartbeat_response.payload.get("last_rolls")
         print(f"New game state ({hash(self.state)})")
         self._refresh_widgets()
 
@@ -82,7 +88,7 @@ class GameWidget(kx.XFrame):
         # Info panel
         self.info_panel = kx.XLabel(halign="left", valign="top")
         panel_frame = kx.pwrap(self.info_panel)
-        panel_frame.set_size(x="350dp")
+        panel_frame.set_size(x="200sp")
         # Board
         self.board_buttons = []
         board_frame = kx.XGrid(cols=BOARD_SIZE)
@@ -104,21 +110,29 @@ class GameWidget(kx.XFrame):
     def _refresh_widgets(self, *args):
         # Update info panel
         fg2 = self.subtheme.fg2.markup
+        hash_repr = str(hash(self.state))[:6]
+        player = self.state.get_player()
         player_names = "\n".join(f"- {name}" for name in self.player_names)
+        player_dice = "\n".join(
+            f"{{{p.index + 1}}} {p.dice}" for p in self.state.players
+        )
         self.info_panel.text = "\n".join(
             [
                 "\n",
                 fg2("[u][b]Game[/b][/u]"),
                 self.client.game,
+                hash_repr,
                 "\n",
                 fg2("[u][b]Info[/b][/u]"),
-                f"Last rolls: {self.last_rolls}",
-                f"Turn: {self.state.turn}",
+                f"Turn #{self.state.turn:>3}: {player.index}",
+                f"Dice:\n{player_dice}",
+                "\n",
                 f"Players: {len(self.player_names)}",
                 player_names,
                 "\n",
                 fg2("[i][b]Server says:[/b][/i]"),
-                str(self.server_response),
+                str(self.server_response.message),
+                str(self.server_response.payload),
             ]
         )
         # Update buttons
@@ -143,14 +157,18 @@ class GameWidget(kx.XFrame):
                     x, y = COMPLETED[player_idx]
                 else:
                     raise RuntimeError(f"Unexpected unit.track value: {unit.track}")
-                text = f"\n{{[b]{player_idx}[/b]}} {unit_idx}"
+                text = f"\n{{[b]{player_idx + 1}[/b]}} {unit_idx + 1}"
                 btn = self.board_buttons[x][y]
                 btn.text += text
                 if accent:
                     btn.subtheme_name = "accent"
 
-    def _user_autoplay(self):
-        self.client.send(pgnet.Packet("autoplay"), self._on_response)
+    def _user_roll(self):
+        self.client.send(pgnet.Packet("roll"), self._on_response)
+
+    def _user_move(self, unit_index: int):
+        payload = dict(die_index=0, unit_index=unit_index)
+        self.client.send(pgnet.Packet("move", payload), self._on_response)
 
     def _invoke_board_button(self, x: int, y: int):
         print(f"button: {x},{y}")
