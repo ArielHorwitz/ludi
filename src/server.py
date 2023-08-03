@@ -46,6 +46,8 @@ class GameServer(pgnet.Game):
         return Response("Updated state.", payload)
 
     def handle_game_packet(self, packet: Packet) -> Response:
+        if self.state.winner is not None:
+            return Response("Game is over.", status=Status.UNEXPECTED)
         method_name = f"_user_{packet.message}"
         if not hasattr(self, method_name):
             return Response(

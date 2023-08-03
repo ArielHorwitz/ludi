@@ -1,3 +1,4 @@
+from typing import Optional
 import random
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
@@ -55,6 +56,9 @@ class Player:
     def __hash__(self) -> int:
         return hash((self.index, tuple(self.units), tuple(self.dice)))
 
+    def get_progress(self) -> float:
+        return sum(u.track_distance for u in self.units) / TRACK_SIZE / UNIT_COUNT
+
 
 @dataclass_json
 @dataclass
@@ -63,6 +67,7 @@ class GameState:
     players: list[Player] = field(
         default_factory=lambda: [Player(i) for i in range(PLAYER_COUNT)]
     )
+    winner: Optional[int] = None
 
     @classmethod
     def new_game(cls) -> "GameState":
@@ -81,14 +86,25 @@ class GameState:
         return self.players[self.turn % PLAYER_COUNT]
 
     def roll_dice(self) -> str:
-        # Add dice until we have correct dice count
         player = self.get_player()
+        # Rescue to have at least one unit on the track
+        if all(unit.position != Position.TRACK for unit in player.units):
+            for unit in player.units:
+                if unit.position == Position.SPAWN:
+                    # Rescue
+                    unit.position = Position.TRACK
+                    unit.track_distance = 0
+                    break
+        # Add dice until we have correct dice count
         if len(player.dice) == DICE_COUNT:
             return "Dice full"
+        rolls = []
         while len(player.dice) < DICE_COUNT:
             roll = random.randint(ROLL_MIN, ROLL_MAX)
             player.dice.append(roll)
-        return "Rolled"
+            rolls.append(roll)
+        rolls_repr = ", ".join(str(r) for r in rolls)
+        return f"Rolled: {rolls_repr}"
 
     def move_unit(self, unit_index: int, die_index: int) -> str:
         player = self.get_player()
@@ -116,13 +132,23 @@ class GameState:
             assert unit.position == Position.TRACK
             player.dice.pop(die_index)
             unit.track_distance += die_value
+            extra_turn = die_value == ROLL_MAX
             response = f"Moved +{die_value}"
-            captured = self._capture(player.index, unit.get_position(player.index))
-            if captured:
-                captured_repr = " ".join([f"({p + 1},{u + 1})" for p, u in captured])
-                response = f"{response}, captured {captured_repr}"
-            turn_over = die_value != ROLL_MAX and not captured
-            if turn_over:
+            if unit.track_distance >= TRACK_SIZE:
+                unit.track_distance = TRACK_SIZE
+                unit.position = Position.FINISH
+                response = f"{response}, finished!"
+                if all(unit.position == Position.FINISH for unit in player.units):
+                    self.winner = player.index
+                    response = f"{response}\nPlayer {player.index + 1} wins!"
+            else:
+                captured = self._capture(player.index, unit.get_position(player.index))
+                if captured:
+                    reprs = [f"({p + 1},{u + 1})" for p, u in captured]
+                    captured_repr = " ".join(reprs)
+                    response = f"{response}, captured {captured_repr}"
+                    extra_turn = True
+            if not extra_turn:
                 self.turn += 1
             return response
 
@@ -144,12 +170,4 @@ class GameState:
                     unit.position = Position.SPAWN
                     unit.track_distance = 0
                     captured.append((player.index, unit.index))
-            # Leave at least one unit per player on the track
-            if all(unit.position != Position.TRACK for unit in player.units):
-                for unit in player.units:
-                    if unit.position == Position.SPAWN:
-                        # Rescue
-                        unit.position = Position.TRACK
-                        unit.track_distance = 0
-                        break
         return captured

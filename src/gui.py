@@ -115,6 +115,10 @@ class GameWidget(kx.XFrame):
         player_dice = "\n".join(
             f"{{{p.index + 1}}} {p.dice}" for p in self.state.players
         )
+        player_progress = "\n".join(
+            f"{p.get_progress() * 100:.1f} %"
+            for p in self.state.players
+        )
         self.info_panel.text = "\n".join(
             [
                 "\n",
@@ -124,7 +128,11 @@ class GameWidget(kx.XFrame):
                 "\n",
                 fg2("[u][b]Info[/b][/u]"),
                 f"Turn #{self.state.turn:>3}: {player.index}",
-                f"Dice:\n{player_dice}",
+                "Dice:",
+                player_dice,
+                "\n",
+                "Progress:",
+                player_progress,
                 "\n",
                 f"Players: {len(self.player_names)}",
                 player_names,
