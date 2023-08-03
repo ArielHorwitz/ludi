@@ -1,7 +1,7 @@
 import kvex as kx
 import pgnet
 import math
-from logic import GameState, BOARD_SIZE, Track, UNIT_COUNT, TRACK_SIZE
+from logic import GameState, BOARD_SIZE, Position, UNIT_COUNT, TRACK_SIZE
 from functools import partial
 
 
@@ -148,12 +148,12 @@ class GameWidget(kx.XFrame):
             for rev_unit_idx, unit in enumerate(reversed(player.units)):
                 unit_idx = UNIT_COUNT - rev_unit_idx - 1
                 accent = False
-                if unit.track == Track.MAIN:
-                    x, y = _track_to_coords(unit.position)
+                if unit.position == Position.TRACK:
+                    x, y = _track_to_coords(unit.track_position)
                     accent = True
-                elif unit.track == Track.START:
+                elif unit.position == Position.SPAWN:
                     x, y = SPAWNS[player_idx]
-                elif unit.track == Track.END:
+                elif unit.position == Position.FINISH:
                     x, y = COMPLETED[player_idx]
                 else:
                     raise RuntimeError(f"Unexpected unit.track value: {unit.track}")

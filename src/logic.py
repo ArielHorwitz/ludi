@@ -14,26 +14,26 @@ ROLL_MIN = 1
 ROLL_MAX = 6
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2
 STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
-INITIAL_ORDER_OFFSETS = tuple(
+TURN_ORDER_HANDICAP = tuple(
     round(_AVG_ROLL * i / PLAYER_COUNT) for i in range(PLAYER_COUNT)
 )
 
 
-class Track(Enum):
-    START = 1
-    MAIN = 2
-    END = 3
+class Position(Enum):
+    SPAWN = 1
+    TRACK = 2
+    FINISH = 3
 
 
 @dataclass_json
 @dataclass
 class Unit:
     index: int
-    position: int = 0
-    track: Track = Track.START
+    position: Position = Position.SPAWN
+    track_position: int = 0
 
     def __hash__(self) -> int:
-        return hash((self.position, self.track))
+        return hash((self.index, self.position, self.track_position))
 
 
 @dataclass_json
@@ -65,9 +65,9 @@ class GameState:
         # Start all units
         for player in game.players:
             unit = player.units[0]
-            unit.track = Track.MAIN
-            offset = INITIAL_ORDER_OFFSETS[player.index]
-            unit.position = STARTING_POSITIONS[player.index] + offset
+            unit.position = Position.TRACK
+            handicap = TURN_ORDER_HANDICAP[player.index]
+            unit.track_position = STARTING_POSITIONS[player.index] + handicap
         return game
 
     def __hash__(self) -> int:
@@ -97,22 +97,22 @@ class GameState:
         # Resolve input
         unit = player.units[unit_index]
         die_value = player.dice[die_index]
-        if unit.track == Track.END:
+        if unit.position == Position.FINISH:
             return "Units that finished cannot move"
-        elif unit.track == Track.START:
+        elif unit.position == Position.SPAWN:
             if die_value != ROLL_MIN:
                 return f"Units in spawn can only move with a {ROLL_MIN}"
             player.dice.pop(die_index)
-            unit.track = Track.MAIN
-            unit.position = STARTING_POSITIONS[player.index]
-            return f"Moved on to track (#{die_index})"
+            unit.position = Position.TRACK
+            unit.track_position = STARTING_POSITIONS[player.index]
+            return f"Moved on #{unit.index + 1} to track"
         else:
             # Units on track can always use any die
-            assert unit.track == Track.MAIN
+            assert unit.position == Position.TRACK
             player.dice.pop(die_index)
-            unit.position += die_value
-            response = f"Moved +{die_value} (#{die_index})"
-            captured = self._capture(player.index, unit.position)
+            unit.track_position += die_value
+            response = f"Moved +{die_value}"
+            captured = self._capture(player.index, unit.track_position)
             if captured:
                 captured_repr = " ".join([f"({p + 1},{u + 1})" for p, u in captured])
                 response = f"{response}, captured {captured_repr}"
@@ -135,16 +135,17 @@ class GameState:
                 # Ignore friendly units
                 continue
             for unit in player.units:
-                if capture_position == unit.position % TRACK_SIZE:
-                    unit.track = Track.START
+                if capture_position == unit.track_position % TRACK_SIZE:
                     # Capture
+                    unit.position = Position.SPAWN
+                    unit.track_position = STARTING_POSITIONS[player.index]
                     captured.append((player.index, unit.index))
-            if all(unit.track != Track.MAIN for unit in player.units):
             # Leave at least one unit per player on the track
+            if all(unit.position != Position.TRACK for unit in player.units):
                 for unit in player.units:
-                    if unit.track == Track.START:
-                        unit.track = Track.MAIN
-                        unit.position = STARTING_POSITIONS[player.index]
+                    if unit.position == Position.SPAWN:
                         # Rescue
+                        unit.position = Position.TRACK
+                        unit.track_position = STARTING_POSITIONS[player.index]
                         break
         return captured
