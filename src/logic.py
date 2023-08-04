@@ -7,7 +7,7 @@ from enum import Enum
 
 BOARD_SIZE = 12
 UNIT_COUNT = 4
-DICE_COUNT = 1
+DICE_COUNT = 2
 ROLL_MIN = 1
 ROLL_MAX = 6
 TRACK_SIZE = BOARD_SIZE * 4

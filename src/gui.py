@@ -1,3 +1,4 @@
+from typing import Optional
 import kvex as kx
 import pgnet
 from logic import (
@@ -5,7 +6,6 @@ from logic import (
     TRACK_SIZE,
     BOARD_SIZE,
     DICE_COUNT,
-    PLAYER_COUNT,
     UNIT_COUNT,
     Position,
 )
@@ -33,6 +33,7 @@ class GameWidget(kx.XFrame):
         self.state_hash = None
         self.state = GameState()
         self.player_names = set()
+        self.chosen_die: Optional[int] = None
         self.server_response = pgnet.Response("Awaiting request.")
         super().__init__(**kwargs)
         self.client = client
@@ -40,12 +41,11 @@ class GameWidget(kx.XFrame):
         hotkeys = self.app.game_controller
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
-        for i in range(UNIT_COUNT):
-            one_index = str(i + 1)
-            control = f"move {one_index}"
-            hotkeys.register(control, one_index)  # Number key
-            hotkeys.register(control, f"f{one_index}")  # F# key
-            hotkeys.bind(control, partial(self._user_move, i))
+        for i in range(max(UNIT_COUNT, DICE_COUNT)):
+            control = keynumber = str(i + 1)
+            hotkeys.register(control, keynumber)  # Number keys
+            hotkeys.register(control, f"f{keynumber}")  # F keys
+            hotkeys.bind(control, partial(self._select_index, i))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
         self._on_geometry()
@@ -69,6 +69,7 @@ class GameWidget(kx.XFrame):
 
     def _on_response(self, response: pgnet.Response):
         self.server_response = response
+        self.chosen_die = None
         self._refresh_widgets()
 
     def _make_widgets(self):
@@ -170,8 +171,11 @@ class GameWidget(kx.XFrame):
                 str(self.server_response.payload),
             ]
         )
+        current_index = player.index
         for player, sprites in zip(self.state.players, self.unit_sprites):
-            self.dice_boxes[player.index].set_dice(player.dice)
+            highlight = player.index == current_index
+            highlight_die = self.chosen_die if highlight else None
+            self.dice_boxes[player.index].set_dice(player.dice, highlight, highlight_die)
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 match unit.position:
                     case Position.FINISH:
@@ -184,10 +188,15 @@ class GameWidget(kx.XFrame):
 
     def _user_roll(self):
         self.client.send(pgnet.Packet("roll"), self._on_response)
+        self._refresh_widgets()
 
-    def _user_move(self, unit_index: int):
-        payload = dict(die_index=0, unit_index=unit_index)
-        self.client.send(pgnet.Packet("move", payload), self._on_response)
+    def _select_index(self, index: int):
+        if self.chosen_die is None:
+            self.chosen_die = index
+        else:
+            payload = dict(die_index=self.chosen_die, unit_index=index)
+            self.client.send(pgnet.Packet("move", payload), self._on_response)
+        self._refresh_widgets()
 
 
 class TrackSquare(kx.XAnchor):
@@ -242,12 +251,19 @@ class DiceBox(kx.XBox):
     def __init__(self, player_index):
         super().__init__()
         self.set_size(hx=0.35, hy=0.1)
-        self.make_bg(PLAYER_COLORS[player_index])
+        self.color = PLAYER_COLORS[player_index]
+        self.make_bg(self.color)
 
-    def set_dice(self, dice: list[int]):
+    def set_dice(self, dice: list[int], highlight: bool, highlight_die: Optional[int]):
         self.clear_widgets()
-        for die in dice:
+        if highlight:
+            self.make_bg(self.color)
+        else:
+            self.make_bg(self.color.modified_value(0.2))
+        for i, die in enumerate(dice):
             label = kx.XLabel(text=str(die), bold=True, font_size="30sp")
+            if i == highlight_die:
+                label.make_bg(kx.XColor.black())
             self.add_widget(kx.pwrap(label))
         while len(self.children) < DICE_COUNT:
             self.add_widget(kx.pwrap(kx.XLabel()))
