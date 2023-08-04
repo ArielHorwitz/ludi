@@ -186,7 +186,9 @@ class GameWidget(kx.XFrame):
         for player, sprites in zip(self.state.players, self.unit_sprites):
             highlight = player.index == current_index
             highlight_die = self.chosen_die if highlight else None
-            self.dice_boxes[player.index].set_dice(player.dice, highlight, highlight_die)
+            self.dice_boxes[player.index].set_dice(
+                player.dice, highlight, highlight_die
+            )
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 match unit.position:
                     case Position.FINISH:
@@ -283,4 +285,3 @@ class DiceBox(kx.XBox):
             self.add_widget(kx.pwrap(label))
         while len(self.children) < DICE_COUNT:
             self.add_widget(kx.pwrap(kx.XLabel()))
-
