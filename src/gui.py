@@ -69,7 +69,6 @@ class GameWidget(kx.XFrame):
         self.player_names = heartbeat_response.payload["player_names"]
         state = heartbeat_response.payload.get("state")
         if state is None:
-            self._refresh_widgets()
             return
         self.state = GameState.from_json(state)
         print(f"New game state ({hash(self.state)})")
