@@ -1,4 +1,6 @@
 from typing import Optional
+from pathlib import Path
+import random
 import kvex as kx
 import pgnet
 from logic import (
@@ -25,6 +27,15 @@ PLAYER_ANCHORS = [
     ("right", "bottom"),
 ]
 UNIT_NAMES = "ABCDEFGHIJ"
+ASSET_DIR = Path(__file__).parent / "assets"
+DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
+
+
+def play_dice_sfx():
+    sfx = random.choice(DICE_SFX)
+    if sfx.get_pos():
+        sfx.stop()
+    sfx.play()
 
 
 class GameWidget(kx.XFrame):
@@ -187,8 +198,13 @@ class GameWidget(kx.XFrame):
                         sprite.move_to_track(square)
 
     def _user_roll(self):
-        self.client.send(pgnet.Packet("roll"), self._on_response)
+        self.client.send(pgnet.Packet("roll"), self._on_roll)
         self._refresh_widgets()
+
+    def _on_roll(self, response: pgnet.Response):
+        if not response.status:
+            play_dice_sfx()
+        self._on_response(response)
 
     def _select_index(self, index: int):
         if self.chosen_die is None:
@@ -204,12 +220,12 @@ class TrackSquare(kx.XAnchor):
         super().__init__()
         self.color = PLAYER_COLORS[quarter]
         value = 0.2 - 0.1 * (offset / (BOARD_SIZE + 1))
-        self.make_bg(color=self.color.modified_value(value), source="square.png")
+        self.make_bg(color=self.color.modified_value(value))
         self.unit_frame = kx.XRelative()
         self.add_widget(self.unit_frame)
 
     def make_starting(self):
-        self.make_bg(color=self.color.modified_value(0.5), source="square-starting.png")
+        self.make_bg(color=self.color.modified_value(0.5))
 
 
 class UnitSprite(kx.XAnchor):
@@ -217,7 +233,7 @@ class UnitSprite(kx.XAnchor):
         super().__init__()
         self.player_index = player_index
         self.unit_index = unit_index
-        self.make_bg(color=PLAYER_COLORS[player_index], source="unit.png")
+        self.make_bg(color=PLAYER_COLORS[player_index], source=ASSET_DIR / "unit.png")
         self.label = kx.XLabel(text=UNIT_NAMES[unit_index], color=(0, 0, 0), bold=True)
         self.add_widget(self.label)
 
@@ -267,3 +283,4 @@ class DiceBox(kx.XBox):
             self.add_widget(kx.pwrap(label))
         while len(self.children) < DICE_COUNT:
             self.add_widget(kx.pwrap(kx.XLabel()))
+
