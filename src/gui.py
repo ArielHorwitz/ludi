@@ -1,43 +1,30 @@
 import kvex as kx
 import pgnet
-import math
-from logic import GameState, BOARD_SIZE, UNIT_COUNT, Position
+from logic import (
+    GameState,
+    TRACK_SIZE,
+    BOARD_SIZE,
+    DICE_COUNT,
+    PLAYER_COUNT,
+    UNIT_COUNT,
+    Position,
+)
 from functools import partial
 
 
-BOARD_END = BOARD_SIZE - 1
-assert BOARD_SIZE % 2 == 0
-BOARD_MIDDLE = (BOARD_END) / 2
-assert BOARD_MIDDLE != int(BOARD_MIDDLE)
-SPAWNS = (
-    (1, 1),
-    (1, BOARD_END - 1),
-    (BOARD_END - 1, BOARD_END - 1),
-    (BOARD_END - 1, 1),
+PLAYER_COLORS = (
+    kx.XColor.from_name("blue"),
+    kx.XColor.from_name("green"),
+    kx.XColor.from_name("yellow"),
+    kx.XColor.from_name("red"),
 )
-COMPLETED = (
-    (math.floor(BOARD_MIDDLE), math.floor(BOARD_MIDDLE)),
-    (math.floor(BOARD_MIDDLE), math.ceil(BOARD_MIDDLE)),
-    (math.ceil(BOARD_MIDDLE), math.ceil(BOARD_MIDDLE)),
-    (math.ceil(BOARD_MIDDLE), math.floor(BOARD_MIDDLE)),
-)
-
-
-def _track_to_coords(track_position: int) -> (int, int):
-    quarter = track_position // (BOARD_SIZE)
-    offset = track_position % (BOARD_SIZE)
-    if quarter == 0:
-        return 0, offset
-    elif quarter == 1:
-        return offset, BOARD_END
-    elif quarter == 2:
-        return BOARD_END, BOARD_END - offset
-    elif quarter == 3:
-        return BOARD_END - offset, 0
-    else:
-        raise RuntimeError(
-            f"Track position {track_position} not on track {quarter=} {offset=}"
-        )
+PLAYER_ANCHORS = [
+    ("left", "bottom"),
+    ("left", "top"),
+    ("right", "top"),
+    ("right", "bottom"),
+]
+UNIT_NAMES = "ABCDEFGHIJ"
 
 
 class GameWidget(kx.XFrame):
@@ -61,6 +48,7 @@ class GameWidget(kx.XFrame):
             hotkeys.bind(control, partial(self._user_move, i))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
+        self._on_geometry()
 
     def on_subtheme(self, *args, **kwargs):
         super().on_subtheme(*args, **kwargs)
@@ -84,27 +72,68 @@ class GameWidget(kx.XFrame):
         self._refresh_widgets()
 
     def _make_widgets(self):
+        self.clear_widgets()
         # Info panel
         self.info_panel = kx.XLabel(halign="left", valign="top")
         panel_frame = kx.pwrap(self.info_panel)
         panel_frame.set_size(x="200sp")
         # Board
-        self.board_buttons = []
-        board_frame = kx.XGrid(cols=BOARD_SIZE)
-        for x in range(BOARD_SIZE):
-            self.board_buttons.append([])
-            for y in range(BOARD_SIZE):
-                btn = kx.XButton(
-                    subtheme_name="primary",
-                    on_release=lambda *a, c=(x, y): self._invoke_board_button(*c),
-                )
-                self.board_buttons[-1].append(btn)
-                board_frame.add_widget(kx.pwrap(btn))
+        self.track_squares = []
+        self.board_frame = kx.XRelative()
+        self.spawn_frame = kx.XRelative()
+        self.spawn_frame.set_size(hx=0.3, hy=0.3)
+        for i in range(TRACK_SIZE):
+            track_square = TrackSquare(i // BOARD_SIZE, i % BOARD_SIZE)
+            if i % BOARD_SIZE == 0:
+                track_square.make_starting()
+            self.board_frame.add_widget(track_square)
+            self.track_squares.append(track_square)
+        self.board_frame.bind(size=self._on_geometry)
+        self.unit_sprites = []
+        self.dice_boxes = []
+        self.dice_frame = kx.XAnchor()
+        self.dice_frame.set_size(hx=0.8, hy=0.8)
+        for player_index, (ax, ay) in enumerate(PLAYER_ANCHORS):
+            dicebox = DiceBox(player_index)
+            self.dice_frame.add_widget(kx.wrap(dicebox, anchor_x=ax, anchor_y=ay))
+            self.dice_boxes.append(dicebox)
+            self.unit_sprites.append([])
+            for unit_index in range(UNIT_COUNT):
+                unit = UnitSprite(player_index, unit_index)
+                self.unit_sprites[-1].append(unit)
         # Assemble
         main_frame = kx.XBox()
+        board_frame = kx.XAnchor()
+        board_frame.add_widgets(self.board_frame, self.spawn_frame, self.dice_frame)
+        board_frame.make_bg(kx.XColor(0.3, 0.3, 0.3))
         main_frame.add_widgets(panel_frame, board_frame)
-        self.clear_widgets()
         self.add_widget(main_frame)
+
+    def _on_geometry(self, *args):
+        width = self.board_frame.width
+        height = self.board_frame.height
+        square_x = width / (BOARD_SIZE + 1)
+        square_y = height / (BOARD_SIZE + 1)
+        for i, square in enumerate(self.track_squares):
+            square.set_size(square_x * 0.9, square_y * 0.9)
+            quarter = i // BOARD_SIZE
+            offset = i % BOARD_SIZE
+            match quarter:
+                case 0:
+                    square.x = 0
+                    square.y = square_y * offset
+                case 1:
+                    square.x = square_x * offset
+                    square.y = height - square_y
+                case 2:
+                    square.x = width - square_x
+                    square.y = height - square_y * (offset + 1)
+                case 3:
+                    square.x = width - square_x * (offset + 1)
+                    square.y = 0
+                case _:
+                    square.x = square_x
+                    square.y = square_y
 
     def _refresh_widgets(self, *args):
         # Update info panel
@@ -116,8 +145,7 @@ class GameWidget(kx.XFrame):
             f"{{{p.index + 1}}} {p.dice}" for p in self.state.players
         )
         player_progress = "\n".join(
-            f"{p.get_progress() * 100:.1f} %"
-            for p in self.state.players
+            f"{p.get_progress() * 100:.1f} %" for p in self.state.players
         )
         self.info_panel.text = "\n".join(
             [
@@ -142,33 +170,17 @@ class GameWidget(kx.XFrame):
                 str(self.server_response.payload),
             ]
         )
-        # Update buttons
-        for x in range(BOARD_SIZE):
-            for y in range(BOARD_SIZE):
-                btn = self.board_buttons[x][y]
-                btn.text = ""
-                if 0 < x < BOARD_END and 0 < y < BOARD_END:
-                    btn.subtheme_name = "primary"
-                else:
-                    btn.subtheme_name = "secondary"
-        for player_idx, player in enumerate(self.state.players):
-            for rev_unit_idx, unit in enumerate(reversed(player.units)):
-                unit_idx = UNIT_COUNT - rev_unit_idx - 1
-                accent = False
-                if unit.position == Position.TRACK:
-                    x, y = _track_to_coords(unit.get_position(player_idx))
-                    accent = True
-                elif unit.position == Position.SPAWN:
-                    x, y = SPAWNS[player_idx]
-                elif unit.position == Position.FINISH:
-                    x, y = COMPLETED[player_idx]
-                else:
-                    raise RuntimeError(f"Unexpected unit.track value: {unit.track}")
-                text = f"\n{{[b]{player_idx + 1}[/b]}} {unit_idx + 1}"
-                btn = self.board_buttons[x][y]
-                btn.text += text
-                if accent:
-                    btn.subtheme_name = "accent"
+        for player, sprites in zip(self.state.players, self.unit_sprites):
+            self.dice_boxes[player.index].set_dice(player.dice)
+            for unit, sprite in reversed(list(zip(player.units, sprites))):
+                match unit.position:
+                    case Position.FINISH:
+                        sprite.remove_from_parent()
+                    case Position.SPAWN:
+                        sprite.move_to_spawn(self.spawn_frame)
+                    case Position.TRACK:
+                        square = self.track_squares[unit.get_position(player.index)]
+                        sprite.move_to_track(square)
 
     def _user_roll(self):
         self.client.send(pgnet.Packet("roll"), self._on_response)
@@ -177,5 +189,65 @@ class GameWidget(kx.XFrame):
         payload = dict(die_index=0, unit_index=unit_index)
         self.client.send(pgnet.Packet("move", payload), self._on_response)
 
-    def _invoke_board_button(self, x: int, y: int):
-        print(f"button: {x},{y}")
+
+class TrackSquare(kx.XAnchor):
+    def __init__(self, quarter: int, offset: int):
+        super().__init__()
+        self.color = PLAYER_COLORS[quarter]
+        value = 0.2 - 0.1 * (offset / (BOARD_SIZE + 1))
+        self.make_bg(color=self.color.modified_value(value), source="square.png")
+        self.unit_frame = kx.XRelative()
+        self.add_widget(self.unit_frame)
+
+    def make_starting(self):
+        self.make_bg(color=self.color.modified_value(0.5), source="square-starting.png")
+
+
+class UnitSprite(kx.XAnchor):
+    def __init__(self, player_index: int, unit_index: int):
+        super().__init__()
+        self.player_index = player_index
+        self.unit_index = unit_index
+        self.make_bg(color=PLAYER_COLORS[player_index], source="unit.png")
+        self.label = kx.XLabel(text=UNIT_NAMES[unit_index], color=(0, 0, 0), bold=True)
+        self.add_widget(self.label)
+
+    def move_to_spawn(self, frame):
+        self.remove_from_parent()
+        self.set_size(hx=0.25, hy=0.25)
+        self.x = self.unit_index * self.width
+        self.y = self.player_index * self.height
+        frame.add_widget(self)
+
+    def move_to_track(self, track_square: TrackSquare):
+        self.remove_from_parent()
+        self.set_size(hx=0.5, hy=0.5)
+        match self.player_index:
+            case 0:
+                self.pos = 0, 0
+            case 1:
+                self.pos = self.width, 0
+            case 2:
+                self.pos = self.width, self.height
+            case 3:
+                self.pos = 0, self.height
+        track_square.unit_frame.add_widget(self)
+
+    def remove_from_parent(self):
+        if self.parent:
+            self.parent.remove_widget(self)
+
+
+class DiceBox(kx.XBox):
+    def __init__(self, player_index):
+        super().__init__()
+        self.set_size(hx=0.35, hy=0.1)
+        self.make_bg(PLAYER_COLORS[player_index])
+
+    def set_dice(self, dice: list[int]):
+        self.clear_widgets()
+        for die in dice:
+            label = kx.XLabel(text=str(die), bold=True, font_size="30sp")
+            self.add_widget(kx.pwrap(label))
+        while len(self.children) < DICE_COUNT:
+            self.add_widget(kx.pwrap(kx.XLabel()))
