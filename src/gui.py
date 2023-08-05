@@ -29,6 +29,7 @@ PLAYER_ANCHORS = [
 UNIT_NAMES = "ABCDEFGHIJ"
 ASSET_DIR = Path(__file__).parent / "assets"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
+GUI_REFRESH_TIMEOUT = 0.5
 
 
 def play_dice_sfx():
@@ -40,16 +41,20 @@ def play_dice_sfx():
 
 class GameWidget(kx.XFrame):
     def __init__(self, client: pgnet.Client, **kwargs):
-        """Override base method."""
+        super().__init__(**kwargs)
         self.state_hash = None
         self.state = GameState()
         self.player_names = set()
         self.chosen_die: Optional[int] = None
         self.server_response = pgnet.Response("Awaiting request.")
-        super().__init__(**kwargs)
+        self.__refresh_trigger = kx.create_trigger(
+            self._full_refresh,
+            timeout=GUI_REFRESH_TIMEOUT,
+        )
         self.client = client
         self._make_widgets()
         hotkeys = self.app.game_controller
+        hotkeys.register("force refresh", "^ f5", self._full_refresh)
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
         for i in range(max(UNIT_COUNT, DICE_COUNT)):
@@ -59,7 +64,8 @@ class GameWidget(kx.XFrame):
             hotkeys.bind(control, partial(self._select_index, i))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
-        self._on_geometry()
+        self.bind(size=self._trigger_refresh)
+        self._trigger_refresh()
 
     def on_subtheme(self, *args, **kwargs):
         super().on_subtheme(*args, **kwargs)
@@ -99,7 +105,6 @@ class GameWidget(kx.XFrame):
                 track_square.make_starting()
             self.board_frame.add_widget(track_square)
             self.track_squares.append(track_square)
-        self.board_frame.bind(size=self._on_geometry)
         self.unit_sprites = []
         self.dice_boxes = []
         self.dice_frame = kx.XAnchor()
@@ -120,7 +125,14 @@ class GameWidget(kx.XFrame):
         main_frame.add_widgets(panel_frame, board_frame)
         self.add_widget(main_frame)
 
-    def _on_geometry(self, *args):
+    def _trigger_refresh(self, *args):
+        kx.snooze_trigger(self.__refresh_trigger)
+
+    def _full_refresh(self, *args):
+        self._refresh_geometry()
+        kx.schedule_once(self._refresh_widgets)
+
+    def _refresh_geometry(self, *args):
         width = self.board_frame.width
         height = self.board_frame.height
         square_x = width / (BOARD_SIZE + 1)
@@ -181,6 +193,7 @@ class GameWidget(kx.XFrame):
                 str(self.server_response.payload),
             ]
         )
+        # Update HUD and unit sprites
         current_index = player.index
         for player, sprites in zip(self.state.players, self.unit_sprites):
             highlight = player.index == current_index
