@@ -2,7 +2,11 @@
 
 from server import GameServer
 from gui import GameWidget
+import pgnet
+from pathlib import Path
+from functools import partial
 
+SAVE_FILE = Path.home() / ".ludi.save"
 INFO_TEXT = (
     "[b][u]Welcome to Ludi[/u][/b]" "\n\n" "A game inspired by the classic Ludo."
 )
@@ -15,6 +19,7 @@ ONLINE_INFO_TEXT = (
 APP_CONFIG = dict(
     game_class=GameServer,
     game_widget=GameWidget,
+    server_factory=partial(pgnet.Server, save_file=SAVE_FILE),
     title="Ludi",
     info_text=INFO_TEXT,
     online_info_text=ONLINE_INFO_TEXT,

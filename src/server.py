@@ -1,3 +1,4 @@
+from typing import Optional
 import pgnet
 import kvex as kx
 from pgnet import Packet, Response, Status
@@ -5,8 +6,12 @@ from logic import GameState
 
 
 class GameServer(pgnet.Game):
-    def __init__(self, *args, **kwargs):
-        self.state = GameState.new_game()
+    def __init__(self, *args, save_string: Optional[str] = None, **kwargs):
+        self.state = (
+            GameState.new_game()
+            if save_string is None
+            else GameState.from_json(save_string)
+        )
         self.player_names = set()
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)
@@ -14,7 +19,7 @@ class GameServer(pgnet.Game):
 
     @property
     def persistent(self):
-        return False
+        return self.state.turn > 0 and self.state.winner is None
 
     def get_save_string(self) -> str:
         return self.state.to_json()
