@@ -235,7 +235,9 @@ class UnitSprite(kx.XAnchor):
         self.player_index = player_index
         self.unit_index = unit_index
         self.make_bg(color=PLAYER_COLORS[player_index], source=ASSET_DIR / "unit.png")
-        self.label = kx.XLabel(text=UNIT_NAMES[unit_index], color=(0, 0, 0), bold=True)
+        self.label = kx.XLabel(
+            text=UNIT_NAMES[unit_index], color=(0, 0, 0), bold=True, font_size="30sp"
+        )
         self.add_widget(self.label)
 
     def move_to_spawn(self, frame):
