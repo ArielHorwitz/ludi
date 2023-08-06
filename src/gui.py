@@ -249,7 +249,13 @@ class UnitSprite(kx.XAnchor):
         self.unit_index = unit_index
         self.make_bg(color=PLAYER_COLORS[player_index], source=ASSET_DIR / "unit.png")
         self.label = kx.XLabel(
-            text=UNIT_NAMES[unit_index], color=(0, 0, 0), bold=True, font_size="30sp"
+            text=UNIT_NAMES[unit_index],
+            enable_theming=False,
+            color=(0, 0, 0),
+            outline_color=(1, 1, 1),
+            outline_width="2sp",
+            bold=True,
+            font_size="30sp",
         )
         self.add_widget(self.label)
 
@@ -279,23 +285,33 @@ class UnitSprite(kx.XAnchor):
             self.parent.remove_widget(self)
 
 
-class DiceBox(kx.XBox):
+class DiceBox(kx.XAnchor):
     def __init__(self, player_index):
         super().__init__()
         self.set_size(hx=0.35, hy=0.1)
         self.color = PLAYER_COLORS[player_index]
-        self.make_bg(self.color)
+        self.frame = kx.XBox()
+        self.add_widget(kx.pwrap(self.frame))
 
     def set_dice(self, dice: list[int], highlight: bool, highlight_die: Optional[int]):
-        self.clear_widgets()
         if highlight:
-            self.make_bg(self.color)
+            self.make_bg(kx.XColor.white())
+            self.frame.make_bg(self.color)
         else:
-            self.make_bg(self.color.modified_value(0.2))
+            self.make_bg(kx.XColor.black())
+            self.frame.make_bg(self.color.modified_value(0.5))
+        self.frame.clear_widgets()
         for i, die in enumerate(dice):
-            label = kx.XLabel(text=str(die), bold=True, font_size="30sp")
+            label = kx.XLabel(
+                text=str(die),
+                enable_theming=False,
+                bold=True,
+                color=[1, 1, 1] if highlight else [0.5, 0.5, 0.5],
+                outline_width="3sp",
+                font_size="30sp",
+            )
             if i == highlight_die:
                 label.make_bg(kx.XColor.black())
-            self.add_widget(kx.pwrap(label))
-        while len(self.children) < DICE_COUNT:
-            self.add_widget(kx.pwrap(kx.XLabel()))
+            self.frame.add_widget(kx.pwrap(label))
+        while len(self.frame.children) < DICE_COUNT:
+            self.frame.add_widget(kx.XAnchor())
