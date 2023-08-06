@@ -102,11 +102,7 @@ class GameWidget(kx.XFrame):
 
     def _make_widgets(self):
         self.clear_widgets()
-        # Info panel
-        self.info_panel = kx.XLabel(halign="left", valign="top")
-        panel_frame = kx.pwrap(self.info_panel)
-        panel_frame.set_size(x="200sp")
-        # Board
+        self.make_bg(kx.XColor(0.3, 0.3, 0.3))
         self.track_squares = []
         self.board_frame = kx.XRelative()
         self.spawn_frame = kx.XRelative()
@@ -127,13 +123,9 @@ class GameWidget(kx.XFrame):
             for unit_index in range(logic.UNIT_COUNT):
                 unit = UnitSprite(player_index, unit_index)
                 self.unit_sprites[-1].append(unit)
-        # Assemble
-        main_frame = kx.XBox()
         board_frame = kx.XAnchor()
         board_frame.add_widgets(self.board_frame, self.spawn_frame, self.dice_frame)
-        board_frame.make_bg(kx.XColor(0.3, 0.3, 0.3))
-        main_frame.add_widgets(panel_frame, board_frame)
-        self.add_widget(main_frame)
+        self.add_widget(board_frame)
 
     def _trigger_refresh(self, *args):
         kx.snooze_trigger(self.__refresh_trigger)
@@ -169,39 +161,7 @@ class GameWidget(kx.XFrame):
                     square.y = square_y
 
     def _refresh_widgets(self, *args):
-        # Update info panel
-        fg2 = self.subtheme.fg2.markup
-        hash_repr = str(hash(self.state))[:6]
         player = self.state.get_player()
-        player_names = "\n".join(f"- {name}" for name in self.player_names)
-        log = "\n".join(reversed(self.state.log[-3:]))
-        player_progress = "\n".join(
-            f"{p.get_progress() * 100:.1f} %" for p in self.state.players
-        )
-        self.info_panel.text = "\n".join(
-            [
-                "\n",
-                fg2("[u][b]Game[/b][/u]"),
-                self.client.game,
-                hash_repr,
-                "\n",
-                fg2("[u][b]Info[/b][/u]"),
-                f"Turn #{self.state.turn:>3}: {player.index}",
-                "Log:",
-                log,
-                "\n",
-                "Progress:",
-                player_progress,
-                "\n",
-                f"Players: {len(self.player_names)}",
-                player_names,
-                "\n",
-                fg2("[i][b]Server says:[/b][/i]"),
-                str(self.server_response.message),
-                str(self.server_response.payload),
-            ]
-        )
-        # Update HUD and unit sprites
         current_index = player.index
         for player, sprites in zip(self.state.players, self.unit_sprites):
             highlight = player.index == current_index
