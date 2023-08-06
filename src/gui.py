@@ -4,15 +4,6 @@ import random
 import kvex as kx
 import pgnet
 import logic
-from logic import (
-    GameState,
-    TRACK_SIZE,
-    BOARD_SIZE,
-    DICE_COUNT,
-    UNIT_COUNT,
-    UNIT_NAMES,
-    Position,
-)
 import tokenizer
 from tokenizer import EventType
 from functools import partial
@@ -58,7 +49,7 @@ class GameWidget(kx.XFrame):
     def __init__(self, client: pgnet.Client, **kwargs):
         super().__init__(**kwargs)
         self.state_hash = None
-        self.state = GameState()
+        self.state = logic.GameState.new_game()
         self.player_names = set()
         self.chosen_die: Optional[int] = None
         self.server_response = pgnet.Response("Awaiting request.")
@@ -72,7 +63,7 @@ class GameWidget(kx.XFrame):
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
-        for i in range(max(UNIT_COUNT, DICE_COUNT)):
+        for i in range(max(logic.UNIT_COUNT, logic.DICE_COUNT)):
             control = keynumber = str(i + 1)
             hotkeys.register(control, keynumber)  # Number keys
             hotkeys.register(control, f"f{keynumber}")  # F keys
@@ -91,7 +82,7 @@ class GameWidget(kx.XFrame):
         state = heartbeat_response.payload.get("state")
         if state is None:
             return
-        self.state = GameState.from_json(state)
+        self.state = logic.GameState.from_json(state)
         print(f"New game state ({hash(self.state)})")
         last_event = tokenizer.tokenize_turn(self.state.log[-1])[-1]
         if last_event == EventType.TURN_START and len(self.state.log) > 1:
@@ -120,7 +111,7 @@ class GameWidget(kx.XFrame):
         self.board_frame = kx.XRelative()
         self.spawn_frame = kx.XRelative()
         self.spawn_frame.set_size(hx=0.3, hy=0.3)
-        for i in range(TRACK_SIZE):
+        for i in range(logic.TRACK_SIZE):
             track_square = TrackSquare(i)
             self.board_frame.add_widget(track_square)
             self.track_squares.append(track_square)
@@ -133,7 +124,7 @@ class GameWidget(kx.XFrame):
             self.dice_frame.add_widget(kx.wrap(dicebox, anchor_x=ax, anchor_y=ay))
             self.dice_boxes.append(dicebox)
             self.unit_sprites.append([])
-            for unit_index in range(UNIT_COUNT):
+            for unit_index in range(logic.UNIT_COUNT):
                 unit = UnitSprite(player_index, unit_index)
                 self.unit_sprites[-1].append(unit)
         # Assemble
@@ -154,12 +145,12 @@ class GameWidget(kx.XFrame):
     def _refresh_geometry(self, *args):
         width = self.board_frame.width
         height = self.board_frame.height
-        square_x = width / (BOARD_SIZE + 1)
-        square_y = height / (BOARD_SIZE + 1)
+        square_x = width / (logic.BOARD_SIZE + 1)
+        square_y = height / (logic.BOARD_SIZE + 1)
         for i, square in enumerate(self.track_squares):
             square.set_size(square_x * 0.9, square_y * 0.9)
-            quarter = i // BOARD_SIZE
-            offset = i % BOARD_SIZE
+            quarter = i // logic.BOARD_SIZE
+            offset = i % logic.BOARD_SIZE
             match quarter:
                 case 0:
                     square.x = 0
@@ -222,11 +213,11 @@ class GameWidget(kx.XFrame):
             starting_square.label.text = f"{round(player.get_progress(), 1)}%"
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 match unit.position:
-                    case Position.FINISH:
+                    case logic.Position.FINISH:
                         sprite.remove_from_parent()
-                    case Position.SPAWN:
+                    case logic.Position.SPAWN:
                         sprite.move_to_spawn(self.spawn_frame)
-                    case Position.TRACK:
+                    case logic.Position.TRACK:
                         square = self.track_squares[unit.get_position(player.index)]
                         sprite.move_to_track(square)
 
@@ -268,7 +259,7 @@ class UnitSprite(kx.XAnchor):
         self.unit_index = unit_index
         self.make_bg(color=PLAYER_COLORS[player_index], source=ASSET_DIR / "unit.png")
         self.label = kx.XLabel(
-            text=UNIT_NAMES[unit_index],
+            text=logic.UNIT_NAMES[unit_index],
             enable_theming=False,
             color=(0, 0, 0),
             outline_color=(1, 1, 1),
@@ -332,5 +323,5 @@ class DiceBox(kx.XAnchor):
             if i == highlight_die:
                 label.make_bg(kx.XColor.black())
             self.frame.add_widget(kx.pwrap(label))
-        while len(self.frame.children) < DICE_COUNT:
+        while len(self.frame.children) < logic.DICE_COUNT:
             self.frame.add_widget(kx.XAnchor())
