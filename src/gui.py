@@ -239,18 +239,20 @@ class UnitSprite(kx.XAnchor):
         frame.add_widget(self)
 
     def move_to_track(self, track_square: TrackSquare):
+        frame = track_square.unit_frame
         self.remove_from_parent()
-        self.set_size(hx=0.5, hy=0.5)
+        self.set_size(hx=0.4, hy=0.5)
+        x_offset = self.unit_index * frame.width / 30
         match self.player_index:
             case 0:
-                self.pos = 0, 0
+                self.pos = x_offset, 0
             case 1:
-                self.pos = self.width, 0
+                self.pos = x_offset + frame.width / 2, 0
             case 2:
-                self.pos = self.width, self.height
+                self.pos = x_offset + frame.width / 2, frame.height / 2
             case 3:
-                self.pos = 0, self.height
-        track_square.unit_frame.add_widget(self)
+                self.pos = x_offset, frame.height / 2
+        frame.add_widget(self)
 
     def remove_from_parent(self):
         if self.parent:
