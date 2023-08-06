@@ -12,6 +12,8 @@ from logic import (
     UNIT_NAMES,
     Position,
 )
+import tokenizer
+from tokenizer import EventType
 from functools import partial
 
 
@@ -29,11 +31,23 @@ PLAYER_ANCHORS = [
 ]
 ASSET_DIR = Path(__file__).parent / "assets"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
+EVENT_SFX_FILES = {
+    evtype: ASSET_DIR / "sfx" / f"{evtype.name.lower().replace('_', '-')}.wav"
+    for evtype in EventType
+}
+EVENT_SFX = {
+    evtype: kx.SoundLoader.load(str(path)) for evtype, path in EVENT_SFX_FILES.items()
+}
+TURN_START_SFX_DELAY = 0.2
 GUI_REFRESH_TIMEOUT = 0.5
 
 
-def play_dice_sfx():
-    sfx = random.choice(DICE_SFX)
+def play_event_sfx(event: EventType):
+    if event == EventType.DICE_ROLLED:
+        sfx = random.choice(DICE_SFX)
+    else:
+        sfx = EVENT_SFX[event]
+    print(event, sfx)
     if sfx.get_pos():
         sfx.stop()
     sfx.play()
@@ -78,6 +92,12 @@ class GameWidget(kx.XFrame):
             return
         self.state = GameState.from_json(state)
         print(f"New game state ({hash(self.state)})")
+        last_event = tokenizer.tokenize_turn(self.state.log[-1])[-1]
+        if last_event == EventType.TURN_START and len(self.state.log) > 1:
+            prev_event = tokenizer.tokenize_turn(self.state.log[-2])[-1]
+            play_event_sfx(prev_event)
+        else:
+            play_event_sfx(last_event)
         self._refresh_widgets()
 
     def heartbeat_payload(self) -> str:
@@ -210,13 +230,8 @@ class GameWidget(kx.XFrame):
                         sprite.move_to_track(square)
 
     def _user_roll(self):
-        self.client.send(pgnet.Packet("roll"), self._on_roll)
+        self.client.send(pgnet.Packet("roll"), self._on_response)
         self._refresh_widgets()
-
-    def _on_roll(self, response: pgnet.Response):
-        if not response.status:
-            play_dice_sfx()
-        self._on_response(response)
 
     def _select_index(self, index: int):
         if self.chosen_die is None:
