@@ -6,16 +6,24 @@ from enum import Enum
 import tokenizer
 
 
-BOARD_SIZE = 12
+# Configurable constants
+BOARD_SIZE = 13
 UNIT_COUNT = 4
 DICE_COUNT = 2
 ROLL_MIN = 1
 ROLL_MAX = 6
-TRACK_SIZE = BOARD_SIZE * 4
-PLAYER_COUNT = 4
+SAFE_POSITION_OFFSET = 8
 RESCUE_ROLLS = frozenset([ROLL_MIN, ROLL_MAX])
+
+# Other constants
+PLAYER_COUNT = 4
+TRACK_SIZE = BOARD_SIZE * 4
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2
 STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
+STAR_POSITIONS = tuple(
+    BOARD_SIZE * i + SAFE_POSITION_OFFSET for i in range(PLAYER_COUNT)
+)
+SAFE_POSITIONS = frozenset(set(STARTING_POSITIONS) | set(STAR_POSITIONS))
 TURN_ORDER_HANDICAP = tuple(
     round(_AVG_ROLL * i / PLAYER_COUNT) for i in range(PLAYER_COUNT)
 )
@@ -169,7 +177,7 @@ class GameState:
         player_index: int,
         capture_position: int,
     ) -> list[tuple[str, str]]:
-        if capture_position in STARTING_POSITIONS:
+        if capture_position in SAFE_POSITIONS:
             return []
         captured = []
         for player in self.players:

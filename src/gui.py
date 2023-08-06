@@ -3,6 +3,7 @@ from pathlib import Path
 import random
 import kvex as kx
 import pgnet
+import logic
 from logic import (
     GameState,
     TRACK_SIZE,
@@ -120,9 +121,7 @@ class GameWidget(kx.XFrame):
         self.spawn_frame = kx.XRelative()
         self.spawn_frame.set_size(hx=0.3, hy=0.3)
         for i in range(TRACK_SIZE):
-            track_square = TrackSquare(i // BOARD_SIZE, i % BOARD_SIZE)
-            if i % BOARD_SIZE == 0:
-                track_square.make_starting()
+            track_square = TrackSquare(i)
             self.board_frame.add_widget(track_square)
             self.track_squares.append(track_square)
         self.unit_sprites = []
@@ -219,6 +218,8 @@ class GameWidget(kx.XFrame):
             self.dice_boxes[player.index].set_dice(
                 player.dice, highlight, highlight_die
             )
+            starting_square = self.track_squares[logic.STARTING_POSITIONS[player.index]]
+            starting_square.label.text = f"{round(player.get_progress(), 1)}%"
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 match unit.position:
                     case Position.FINISH:
@@ -243,16 +244,21 @@ class GameWidget(kx.XFrame):
 
 
 class TrackSquare(kx.XAnchor):
-    def __init__(self, quarter: int, offset: int):
+    def __init__(self, position: int):
         super().__init__()
-        self.color = PLAYER_COLORS[quarter]
-        value = 0.2 - 0.1 * (offset / (BOARD_SIZE + 1))
-        self.make_bg(color=self.color.modified_value(value))
         self.unit_frame = kx.XRelative()
+        offset = position % logic.BOARD_SIZE
+        self.label = kx.XLabel(text=str(offset), enable_theming=False)
+        color = PLAYER_COLORS[position // logic.BOARD_SIZE]
+        if position in logic.STARTING_POSITIONS:
+            color = color.modified_value(0.5)
+        elif position in logic.STAR_POSITIONS:
+            color = color.modified_saturation(0.2)
+        else:
+            color = color.modified_value(0.2)
+        self.add_widget(self.label)
         self.add_widget(self.unit_frame)
-
-    def make_starting(self):
-        self.make_bg(color=self.color.modified_value(0.5))
+        self.make_bg(color)
 
 
 class UnitSprite(kx.XAnchor):
