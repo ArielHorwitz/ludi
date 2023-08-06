@@ -9,6 +9,7 @@ from logic import (
     BOARD_SIZE,
     DICE_COUNT,
     UNIT_COUNT,
+    UNIT_NAMES,
     Position,
 )
 from functools import partial
@@ -26,7 +27,6 @@ PLAYER_ANCHORS = [
     ("right", "top"),
     ("right", "bottom"),
 ]
-UNIT_NAMES = "ABCDEFGHIJ"
 ASSET_DIR = Path(__file__).parent / "assets"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
 GUI_REFRESH_TIMEOUT = 0.5
@@ -164,9 +164,7 @@ class GameWidget(kx.XFrame):
         hash_repr = str(hash(self.state))[:6]
         player = self.state.get_player()
         player_names = "\n".join(f"- {name}" for name in self.player_names)
-        player_dice = "\n".join(
-            f"{{{p.index + 1}}} {p.dice}" for p in self.state.players
-        )
+        log = "\n".join(reversed(self.state.log[-3:]))
         player_progress = "\n".join(
             f"{p.get_progress() * 100:.1f} %" for p in self.state.players
         )
@@ -179,8 +177,8 @@ class GameWidget(kx.XFrame):
                 "\n",
                 fg2("[u][b]Info[/b][/u]"),
                 f"Turn #{self.state.turn:>3}: {player.index}",
-                "Dice:",
-                player_dice,
+                "Log:",
+                log,
                 "\n",
                 "Progress:",
                 player_progress,

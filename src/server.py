@@ -64,9 +64,13 @@ class GameServer(pgnet.Game):
 
     # User commands
     def _user_roll(self, packet: Packet) -> Response:
-        return Response(self.state.roll_dice())
+        if self.state.roll_dice():
+            return Response("Ok")
+        return Response("Roll failed", status=Status.UNEXPECTED)
 
     def _user_move(self, packet: Packet) -> Response:
         unit_index = int(packet.payload.get("unit_index", -1))
         die_index = int(packet.payload.get("die_index", -1))
-        return Response(self.state.move_unit(unit_index, die_index))
+        if self.state.move_unit(unit_index, die_index):
+            return Response("Ok")
+        return Response("Move failed", status=Status.UNEXPECTED)

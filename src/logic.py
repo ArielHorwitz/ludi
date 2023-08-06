@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 from enum import Enum
+import tokenizer
 
 
 BOARD_SIZE = 12
@@ -18,6 +19,7 @@ STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
 TURN_ORDER_HANDICAP = tuple(
     round(_AVG_ROLL * i / PLAYER_COUNT) for i in range(PLAYER_COUNT)
 )
+UNIT_NAMES = "ABCDEFGHIJ"
 
 
 class Position(Enum):
@@ -40,6 +42,10 @@ class Unit:
         track_position = self.track_distance + STARTING_POSITIONS[player_index]
         return track_position % TRACK_SIZE
 
+    @property
+    def name(self) -> str:
+        return UNIT_NAMES[self.index]
+
 
 @dataclass_json
 @dataclass
@@ -58,6 +64,10 @@ class Player:
     def get_progress(self) -> float:
         return sum(u.track_distance for u in self.units) / TRACK_SIZE / UNIT_COUNT
 
+    @property
+    def name(self) -> str:
+        return str(self.index + 1)
+
 
 @dataclass_json
 @dataclass
@@ -66,11 +76,13 @@ class GameState:
     players: list[Player] = field(
         default_factory=lambda: [Player(i) for i in range(PLAYER_COUNT)]
     )
+    log: list[str] = field(default_factory=lambda: [])
     winner: Optional[int] = None
 
     @classmethod
     def new_game(cls) -> "GameState":
         game = cls()
+        game.log.append(tokenizer.start_turn(game.get_player().name))
         # Start all units
         for player in game.players:
             unit = player.units[0]
@@ -79,12 +91,12 @@ class GameState:
         return game
 
     def __hash__(self) -> int:
-        return hash((self.turn, tuple(self.players)))
+        return hash((self.turn, tuple(self.players), tuple(self.log)))
 
     def get_player(self) -> Player:
         return self.players[self.turn % PLAYER_COUNT]
 
-    def roll_dice(self) -> str:
+    def roll_dice(self) -> bool:
         player = self.get_player()
         # Rescue to have at least one unit on the track
         if all(unit.position != Position.TRACK for unit in player.units):
@@ -96,66 +108,67 @@ class GameState:
                     break
         # Add dice until we have correct dice count
         if len(player.dice) == DICE_COUNT:
-            return "Dice full"
-        rolls = []
+            return False
         while len(player.dice) < DICE_COUNT:
-            roll = random.randint(ROLL_MIN, ROLL_MAX)
-            player.dice.append(roll)
-            rolls.append(roll)
-        rolls_repr = ", ".join(str(r) for r in rolls)
-        return f"Rolled: {rolls_repr}"
+            die_value = random.randint(ROLL_MIN, ROLL_MAX)
+            player.dice.append(die_value)
+            self.log[-1] += tokenizer.roll_die(die_value)
+        return True
 
-    def move_unit(self, unit_index: int, die_index: int) -> str:
+    def move_unit(self, unit_index: int, die_index: int) -> bool:
         player = self.get_player()
         if len(player.dice) < DICE_COUNT:
-            return "Must roll first"
+            return False
         if unit_index < 0 or unit_index >= UNIT_COUNT:
-            return f"No such unit {unit_index}"
+            return False
         if die_index < 0 or die_index >= DICE_COUNT:
-            return f"No such die {die_index}"
-        # Resolve input
+            return False
         unit = player.units[unit_index]
         die_value = player.dice[die_index]
         if unit.position == Position.FINISH:
-            return "Units that finished cannot move"
+            return False
         elif unit.position == Position.SPAWN:
             if die_value not in RESCUE_ROLLS:
-                rescue = ", ".join(str(r) for r in RESCUE_ROLLS)
-                return f"Units in spawn can be rescued with: {rescue}"
+                return False
             player.dice.pop(die_index)
             unit.position = Position.TRACK
             unit.track_distance = 0
-            return f"Rescued #{unit.index + 1}"
+            self.log[-1] += tokenizer.unit_spawn(unit.name, die_value)
+            return True
         else:
-            # Units on track can always use any die
             assert unit.position == Position.TRACK
             player.dice.pop(die_index)
             unit.track_distance += die_value
-            extra_turn = die_value == ROLL_MAX
-            response = f"Moved +{die_value}"
+            extra_turn = False
             if unit.track_distance >= TRACK_SIZE:
                 unit.track_distance = TRACK_SIZE
                 unit.position = Position.FINISH
-                response = f"{response}, finished!"
+                self.log[-1] += tokenizer.unit_finish(unit.name, die_value)
                 if all(unit.position == Position.FINISH for unit in player.units):
                     self.winner = player.index
-                    response = f"{response}\nPlayer {player.index + 1} wins!"
             else:
-                captured = self._capture(player.index, unit.get_position(player.index))
+                captured = self._do_capture(
+                    player.index,
+                    unit.get_position(player.index),
+                )
                 if captured:
-                    reprs = [f"({p + 1},{u + 1})" for p, u in captured]
-                    captured_repr = " ".join(reprs)
-                    response = f"{response}, captured {captured_repr}"
                     extra_turn = True
+                    self.log[-1] += tokenizer.unit_capture(
+                        unit.name, die_value, captured
+                    )
+                else:
+                    extra_turn = die_value == ROLL_MAX
+                    self.log[-1] += tokenizer.unit_move(unit.name, die_value)
             if not extra_turn:
                 self.turn += 1
-            return response
+                self.log.append(tokenizer.start_turn(self.get_player().name))
+            return True
 
-    def _capture(
+    def _do_capture(
         self,
         player_index: int,
         capture_position: int,
-    ) -> list[tuple[int, int]]:
+    ) -> list[tuple[str, str]]:
         if capture_position in STARTING_POSITIONS:
             return []
         captured = []
@@ -168,5 +181,5 @@ class GameState:
                     # Capture
                     unit.position = Position.SPAWN
                     unit.track_distance = 0
-                    captured.append((player.index, unit.index))
+                    captured.append((player.name, unit.name))
         return captured
