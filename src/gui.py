@@ -172,7 +172,7 @@ class GameWidget(kx.XFrame):
                 player.dice, highlight, highlight_die
             )
             starting_square = self.track_squares[logic.STARTING_POSITIONS[player.index]]
-            starting_square.label.text = f"{round(player.get_progress(), 1)}%"
+            starting_square.label.text = f"{round(100 * player.get_progress(), 1)}%"
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 match unit.position:
                     case logic.Position.FINISH:
