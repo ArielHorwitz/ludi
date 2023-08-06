@@ -63,6 +63,8 @@ class GameWidget(kx.XFrame):
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
+        hotkeys.register("roll", "`")
+        hotkeys.register("roll", "escape")
         for i in range(max(logic.UNIT_COUNT, logic.DICE_COUNT)):
             control = keynumber = str(i + 1)
             hotkeys.register(control, keynumber)  # Number keys
