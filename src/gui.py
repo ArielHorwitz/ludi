@@ -18,7 +18,8 @@ PLAYER_COLORS = (
     kx.XColor.from_name("red"),
 )
 ASSET_DIR = Path(__file__).parent / "assets"
-DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
+DICE_SFX_DIR = ASSET_DIR / "sfx" / "dice"
+DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (DICE_SFX_DIR).iterdir())
 EVENT_SFX_FILES = {
     evtype: ASSET_DIR / "sfx" / f"{evtype.name.lower().replace('_', '-')}.wav"
     for evtype in EventType
