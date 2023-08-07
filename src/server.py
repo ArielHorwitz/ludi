@@ -23,7 +23,6 @@ class GameServer(pgnet.Game):
         self.next_bot_play: Optional[float] = None
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)
-        kx.kv.App.get_running_app().set_theme("midnight")
 
     @property
     def persistent(self):
