@@ -18,6 +18,12 @@ PLAYER_COLORS = (
     kx.XColor.from_name("red"),
 )
 ASSET_DIR = Path(__file__).parent / "assets"
+DICE_IMAGES_DIR = ASSET_DIR / "images" / "dice"
+DICE_IMAGES = [
+    DICE_IMAGES_DIR / f"die{i}.png" for i in range(logic.ROLL_MIN, logic.ROLL_MAX + 1)
+]
+DICE_IMAGES = tuple(path if path.exists() else None for path in DICE_IMAGES)
+print(DICE_IMAGES)
 DICE_SFX_DIR = ASSET_DIR / "sfx" / "dice"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (DICE_SFX_DIR).iterdir())
 EVENT_SFX_FILES = {
@@ -179,6 +185,7 @@ class GameWidget(kx.XAnchor):
                 remove_from_parent(sprite)
                 if unit.position == logic.Position.FINISH:
                     sprite.set_size(hx=0.9, hy=0.9)
+                    sprite.fade_finish()
                     hud.add_to_finishline(sprite.unit_index, sprite)
                 elif unit.position == logic.Position.SPAWN:
                     sprite.set_size(hx=0.5, hy=0.5)
@@ -253,6 +260,10 @@ class UnitSprite(kx.XAnchor):
         )
         self.add_widget(self.label)
 
+    def fade_finish(self):
+        color = PLAYER_COLORS[self.player_index]
+        self.make_bg(color.modified_saturation(0).modified_value(0.5))
+
 
 class Hud(kx.XAnchor):
     def __init__(self, player_index: int):
@@ -266,7 +277,8 @@ class Hud(kx.XAnchor):
         spawnbox.add_widgets(*self.spawnbox)
         spawnbox.make_bg(kx.XColor.black().modified_alpha(0.5))
         # Dicebox
-        self.dicebox = [
+        self.dice_sprites = [kx.kv.Image() for i in range(logic.DICE_COUNT)]
+        self.dice_labels = [
             kx.XLabel(
                 enable_theming=False,
                 bold=True,
@@ -276,7 +288,10 @@ class Hud(kx.XAnchor):
             for i in range(logic.DICE_COUNT)
         ]
         dicebox = kx.XBox()
-        dicebox.add_widgets(*(kx.pwrap(lbl) for lbl in self.dicebox))
+        for sprite, label in zip(self.dice_sprites, self.dice_labels):
+            frame = kx.XAnchor()
+            frame.add_widgets(sprite, label)
+            dicebox.add_widget(frame)
         dicebox.make_bg(kx.XColor.black().modified_alpha(0.3))
         # Finish line
         self.finishline = [kx.XAnchor() for uindex in range(logic.UNIT_COUNT)]
@@ -312,10 +327,26 @@ class Hud(kx.XAnchor):
         self.make_bg(kx.XColor() if highlight else kx.XColor(a=0))
         self.main_frame.make_bg(self.color.modified_value(0.5 if highlight else 0.2))
         for i, die_value in itertools.zip_longest(range(logic.DICE_COUNT), dice):
-            label = self.dicebox[i]
-            label.text = "" if die_value is None else str(die_value)
-            label.color = [1, 1, 1] if highlight else [0.5, 0.5, 0.5]
-            label.make_bg(kx.XColor.black() if i == selected_die else kx.XColor(a=0))
+            sprite = self.dice_sprites[i]
+            label = self.dice_labels[i]
+            image_source = None if die_value is None else DICE_IMAGES[die_value - 1]
+            selected = i == selected_die
+            saturated_color = self.color.modified_saturation(0.7).rgb
+            invis = kx.XColor(a=0)
+            match die_value is not None, image_source is not None:
+                case True, True:
+                    sprite.color = (1, 1, 1) if selected else saturated_color
+                    sprite.source = str(image_source)
+                    label.make_bg(invis)
+                    label.text = ""
+                case True, False:
+                    sprite.color = invis.rgba
+                    label.make_bg(saturated_color if selected else kx.XColor())
+                    label.text = str(die_value)
+                case False, _:
+                    sprite.color = invis.rgba
+                    label.make_bg(invis)
+                    label.text = ""
 
 
 def remove_from_parent(widget):
