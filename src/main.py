@@ -1,10 +1,12 @@
 """Ludi game built on top of MouseFox."""
 
-from server import GameServer
-from gui import GameWidget
-import pgnet
 from pathlib import Path
 from functools import partial
+import pgnet
+import os
+os.environ["KIVY_LOG_MODE"] = "PYTHON"
+from server import GameServer  # noqa: E402
+from gui import GameWidget  # noqa: E402
 
 SAVE_FILE = Path.home() / ".ludi.save"
 INFO_TEXT = (
