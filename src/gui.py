@@ -107,6 +107,10 @@ class GameWidget(kx.XFrame):
         self.make_bg(kx.XColor(0.3, 0.3, 0.3))
         self.track_squares = []
         self.board_frame = kx.XRelative()
+        board_bg = kx.XLabel()
+        board_bg.make_bg(kx.XColor().modified_value(0.2))
+        self.board_frame.add_widget(board_bg)
+        self.board_frame.set_size()
         self.spawn_frame = kx.XRelative()
         self.spawn_frame.set_size(hx=0.3, hy=0.3)
         for i in range(logic.TRACK_SIZE):
@@ -213,9 +217,9 @@ class TrackSquare(kx.XAnchor):
         if position in logic.STARTING_POSITIONS:
             color = color.modified_value(0.5)
         elif position in logic.STAR_POSITIONS:
-            color = color.modified_saturation(0.2)
+            color = color.modified_saturation(0.5).modified_value(0.4)
         else:
-            color = color.modified_value(0.2)
+            color = color.modified_value(0.075)
         self.add_widget(self.label)
         self.add_widget(self.unit_frame)
         self.make_bg(color)
