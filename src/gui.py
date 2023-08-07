@@ -5,6 +5,7 @@ import kvex as kx
 import pgnet
 import logic
 import tokenizer
+from loguru import logger
 from tokenizer import EventType
 from functools import partial
 
@@ -39,7 +40,6 @@ def play_event_sfx(event: EventType):
         sfx = random.choice(DICE_SFX)
     else:
         sfx = EVENT_SFX[event]
-    print(event, sfx)
     if sfx.get_pos():
         sfx.stop()
     sfx.play()
@@ -85,7 +85,7 @@ class GameWidget(kx.XFrame):
         if state is None:
             return
         self.state = logic.GameState.from_json(state)
-        print(f"New game state ({hash(self.state)})")
+        logger.debug(f"New game state ({hash(self.state)})")
         last_event = tokenizer.tokenize_turn(self.state.log[-1])[-1]
         if last_event == EventType.TURN_START and len(self.state.log) > 1:
             prev_event = tokenizer.tokenize_turn(self.state.log[-2])[-1]
@@ -98,7 +98,7 @@ class GameWidget(kx.XFrame):
         return dict(state_hash=hash(self.state))
 
     def _on_response(self, response: pgnet.Response):
-        print(response)
+        logger.debug(response)
         self.chosen_die = None
         self._refresh_widgets()
 

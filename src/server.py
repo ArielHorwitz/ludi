@@ -4,6 +4,7 @@ import kvex as kx
 from pgnet import Packet, Response, Status
 import logic
 import time
+from loguru import logger
 
 DEFAULT_BOT_PLAY_INTERVAL = 2
 MAX_BOT_PLAY_INTERVAL = 10
@@ -38,14 +39,15 @@ class GameServer(pgnet.Game):
         if None in self.human_players:
             index = self.human_players.index(None)
             self.human_players[index] = player
-            print(f"Joined as {self.state.players[index].name}: {player}")
+            logger.info(f"Joined as {self.state.players[index].name}: {player}")
         else:
-            print(f"Spectating: {player}")
+            logger.info(f"Spectating: {player}")
 
     def user_left(self, player: str):
         if player not in self.connected_players:
             return
         self.connected_players.remove(player)
+        logger.info(f"Left: {player}")
 
     def is_bot(self, player_index: int):
         return self.human_players[player_index] is None
@@ -61,6 +63,7 @@ class GameServer(pgnet.Game):
             self.next_bot_play = time.time() + self.bot_play_interval
         elif self.next_bot_play < time.time():
             self.state.play_bot()
+            self.print_logs()
             self.next_bot_play = time.time() + self.bot_play_interval
 
     def handle_heartbeat(self, packet: Packet) -> Response:
@@ -86,7 +89,12 @@ class GameServer(pgnet.Game):
                 status=Status.UNEXPECTED,
             )
         method = getattr(self, method_name)
-        return method(packet)
+        result = method(packet)
+        self.print_logs()
+        return result
+
+    def print_logs(self):
+        logger.debug("Logs:\n" + "\n".join(self.state.log[-5:]))
 
     # User commands
     def _user_roll(self, packet: Packet) -> Response:
