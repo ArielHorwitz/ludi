@@ -1,9 +1,11 @@
-from typing import Optional
+from typing import Optional, NamedTuple
 import random
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 from enum import Enum
 import tokenizer
+import copy
+import itertools
 
 
 # Configurable constants
@@ -19,6 +21,10 @@ RESCUE_ROLLS = frozenset([ROLL_MIN, ROLL_MAX])
 PLAYER_COUNT = 4
 TRACK_SIZE = BOARD_SIZE * 4
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2
+ALL_POSSIBLE_MOVES = tuple(itertools.product(
+    list(range(UNIT_COUNT)),
+    list(range(DICE_COUNT)),
+))
 STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
 STAR_POSITIONS = tuple(
     BOARD_SIZE * i + SAFE_POSITION_OFFSET for i in range(PLAYER_COUNT)
@@ -191,3 +197,42 @@ class GameState:
                     unit.track_distance = 0
                     captured.append((player.name, unit.name))
         return captured
+
+    def play_bot(self):
+        if self.roll_dice():
+            return
+        possible_moves = list(ALL_POSSIBLE_MOVES)
+        random.shuffle(possible_moves)
+        state = copy.deepcopy(self)
+        legal_moves = []
+        for unit_index, die_index in possible_moves:
+            if state.move_unit(unit_index, die_index):
+                legal_moves.append(BotMove(unit_index, die_index, state))
+                state = copy.deepcopy(self)
+        if len(legal_moves) == 0:
+            raise RuntimeError("No legal move found!")
+        player_index = self.get_player().index
+        best_move = sorted(
+            legal_moves,
+            key=lambda m: m.state.bot_evaluation(player_index),
+        )[0]
+        self.move_unit(best_move.unit, best_move.die)
+
+    def bot_evaluation(self, player_index) -> float:
+        player = self.players[player_index]
+        finished_units = [u.position == Position.FINISH for u in player.units]
+        unit_positions = [u.get_position(player_index) for u in player.units]
+        safe_units = set(unit_positions) & SAFE_POSITIONS
+        dice_value = sum(player.dice) / DICE_COUNT / ROLL_MAX - ROLL_MIN
+        return sum([
+            player.get_progress() * 10,
+            len(safe_units) / UNIT_COUNT * 5,
+            sum(finished_units) / UNIT_COUNT * 5,
+            dice_value * 2,
+        ])
+
+
+class BotMove(NamedTuple):
+    unit: int
+    die: int
+    state: GameState

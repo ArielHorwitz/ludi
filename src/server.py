@@ -3,6 +3,9 @@ import pgnet
 import kvex as kx
 from pgnet import Packet, Response, Status
 import logic
+import time
+
+BOT_PLAY_INTERVAL = 2
 
 
 class GameServer(pgnet.Game):
@@ -12,7 +15,9 @@ class GameServer(pgnet.Game):
             if save_string is None
             else logic.GameState.from_json(save_string)
         )
-        self.player_names = set()
+        self.connected_players = set()
+        self.human_players = [None] * logic.PLAYER_COUNT
+        self.next_bot_play: Optional[float] = None
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)
         kx.kv.App.get_running_app().set_theme("midnight")
@@ -25,16 +30,34 @@ class GameServer(pgnet.Game):
         return self.state.to_json()
 
     def user_joined(self, player: str):
-        print(f"Joined: {player}")
-        self.player_names.add(player)
+        if player in self.connected_players:
+            return
+        self.connected_players.add(player)
+        if None in self.human_players:
+            index = self.human_players.index(None)
+            self.human_players[index] = player
+            print(f"Joined as {self.state.players[index].name}: {player}")
+        else:
+            print(f"Spectating: {player}")
 
     def user_left(self, player: str):
-        print(f"Left: {player}")
-        self.player_names.remove(player)
+        if player not in self.connected_players:
+            return
+        self.connected_players.remove(player)
+
+    def is_bot(self, player_index: int):
+        return self.human_players[player_index] is None
 
     # Logic
     def update(self):
-        pass
+        if not self.is_bot(self.state.get_player().index):
+            self.next_bot_play = None
+            return
+        if self.next_bot_play is None:
+            self.next_bot_play = time.time() + BOT_PLAY_INTERVAL
+        elif self.next_bot_play < time.time():
+            self.state.play_bot()
+            self.next_bot_play = time.time() + BOT_PLAY_INTERVAL
 
     def handle_heartbeat(self, packet: Packet) -> Response:
         state_hash = hash(self.state)
@@ -52,6 +75,8 @@ class GameServer(pgnet.Game):
     def handle_game_packet(self, packet: Packet) -> Response:
         if self.state.winner is not None:
             return Response("Game is over.", status=Status.UNEXPECTED)
+        if packet.username != self.human_players[self.state.get_player().index]:
+            return Response("Not your turn.", status=Status.UNEXPECTED)
         method_name = f"_user_{packet.message}"
         if not hasattr(self, method_name):
             return Response(
