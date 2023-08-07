@@ -80,7 +80,6 @@ class GameWidget(kx.XFrame):
         self._refresh_widgets()
 
     def on_heartbeat(self, heartbeat_response: pgnet.Response):
-        self.player_names = heartbeat_response.payload["player_names"]
         state = heartbeat_response.payload.get("state")
         if state is None:
             return

@@ -2,15 +2,15 @@ from typing import Optional
 import pgnet
 import kvex as kx
 from pgnet import Packet, Response, Status
-from logic import GameState
+import logic
 
 
 class GameServer(pgnet.Game):
     def __init__(self, *args, save_string: Optional[str] = None, **kwargs):
         self.state = (
-            GameState.new_game()
+            logic.GameState.new_game()
             if save_string is None
-            else GameState.from_json(save_string)
+            else logic.GameState.from_json(save_string)
         )
         self.player_names = set()
         self.heartbeat_rate = 2
@@ -40,13 +40,12 @@ class GameServer(pgnet.Game):
         state_hash = hash(self.state)
         client_hash = packet.payload.get("state_hash")
         if client_hash == state_hash:
-            payload = dict(state_hash=state_hash, player_names=tuple(self.player_names))
+            payload = dict(state_hash=state_hash)
             return Response("Up to date.", payload)
         state = self.state.to_json()
         payload = dict(
             state_hash=state_hash,
             state=state,
-            player_names=tuple(self.player_names),
         )
         return Response("Updated state.", payload)
 
