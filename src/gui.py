@@ -52,7 +52,6 @@ class GameWidget(kx.XFrame):
         self.state = logic.GameState.new_game()
         self.player_names = set()
         self.chosen_die: Optional[int] = None
-        self.server_response = pgnet.Response("Awaiting request.")
         self.__refresh_trigger = kx.create_trigger(
             self._full_refresh,
             timeout=GUI_REFRESH_TIMEOUT,
@@ -97,7 +96,7 @@ class GameWidget(kx.XFrame):
         return dict(state_hash=hash(self.state))
 
     def _on_response(self, response: pgnet.Response):
-        self.server_response = response
+        print(response)
         self.chosen_die = None
         self._refresh_widgets()
 
