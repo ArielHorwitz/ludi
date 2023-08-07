@@ -57,8 +57,12 @@ class GameWidget(kx.XAnchor):
         logger.info("Widgets created.")
         hotkeys = self.app.game_controller
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
-        hotkeys.register("slow down bots", "-", partial(self._user_set_bot_play_interval, 0.5))
-        hotkeys.register("speed up bots", "=", partial(self._user_set_bot_play_interval, -0.5))
+        hotkeys.register(
+            "slow down bots", "-", partial(self._user_set_bot_play_interval, 0.5)
+        )
+        hotkeys.register(
+            "speed up bots", "=", partial(self._user_set_bot_play_interval, -0.5)
+        )
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
         hotkeys.register("roll", "`")
@@ -277,7 +281,9 @@ class Hud(kx.XAnchor):
         self.finishline = [kx.XAnchor() for uindex in range(logic.UNIT_COUNT)]
         finishbox = kx.XBox()
         finishbox.add_widgets(*self.finishline)
-        self.finish_label = kx.XLabel(text="Finish Line", color=(0, 0, 0), font_size="30sp")
+        self.finish_label = kx.XLabel(
+            text="Finish Line", color=(0, 0, 0), font_size="30sp"
+        )
         self.finish_label.make_bg(self.color.modified_value(0.5))
         finishline = kx.pwrap(self.finish_label)
         finishline.make_bg(self.color)

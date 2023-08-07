@@ -22,10 +22,12 @@ RESCUE_ROLLS = frozenset([ROLL_MIN, ROLL_MAX])
 PLAYER_COUNT = 4
 TRACK_SIZE = BOARD_SIZE * 4
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2
-ALL_POSSIBLE_MOVES = tuple(itertools.product(
-    list(range(UNIT_COUNT)),
-    list(range(DICE_COUNT)),
-))
+ALL_POSSIBLE_MOVES = tuple(
+    itertools.product(
+        list(range(UNIT_COUNT)),
+        list(range(DICE_COUNT)),
+    )
+)
 STARTING_POSITIONS = tuple(BOARD_SIZE * i for i in range(PLAYER_COUNT))
 STAR_POSITIONS = tuple(
     BOARD_SIZE * i + SAFE_POSITION_OFFSET for i in range(PLAYER_COUNT)
@@ -261,25 +263,31 @@ class GameState:
             dice = (dice_value - ROLL_MIN) / (ROLL_MAX - ROLL_MIN)
         else:
             dice = 0
-        total = sum([
-            turn * BotEvalWeights.turn,
-            finish * BotEvalWeights.finish,
-            safe * BotEvalWeights.safe,
-            spawn * BotEvalWeights.spawn,
-            progress * BotEvalWeights.progress,
-            enemy_progress * BotEvalWeights.enemy_progress,
-            dice * BotEvalWeights.dice,
-        ])
-        logger.debug("\n".join([
-            f"Bot Evaluation for: {player.name}",
-            "\n".join(self.log[-2:]),
-            f"          {turn=}",
-            f"{finished_units=}",
-            f"    {safe_units=}",
-            f"{spawning_units=}",
-            f"      {progress=}",
-            f"{enemy_progress=}",
-            f"          {dice=}",
-            f"         {total=}",
-        ]))
+        total = sum(
+            [
+                turn * BotEvalWeights.turn,
+                finish * BotEvalWeights.finish,
+                safe * BotEvalWeights.safe,
+                spawn * BotEvalWeights.spawn,
+                progress * BotEvalWeights.progress,
+                enemy_progress * BotEvalWeights.enemy_progress,
+                dice * BotEvalWeights.dice,
+            ]
+        )
+        logger.debug(
+            "\n".join(
+                [
+                    f"Bot Evaluation for: {player.name}",
+                    "\n".join(self.log[-2:]),
+                    f"          {turn=}",
+                    f"{finished_units=}",
+                    f"    {safe_units=}",
+                    f"{spawning_units=}",
+                    f"      {progress=}",
+                    f"{enemy_progress=}",
+                    f"          {dice=}",
+                    f"         {total=}",
+                ]
+            )
+        )
         return total
