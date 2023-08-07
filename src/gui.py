@@ -1,5 +1,6 @@
 from typing import Optional
 from pathlib import Path
+import itertools
 import random
 import kvex as kx
 import pgnet
@@ -16,12 +17,6 @@ PLAYER_COLORS = (
     kx.XColor.from_name("yellow"),
     kx.XColor.from_name("red"),
 )
-PLAYER_ANCHORS = [
-    ("left", "bottom"),
-    ("left", "top"),
-    ("right", "top"),
-    ("right", "bottom"),
-]
 ASSET_DIR = Path(__file__).parent / "assets"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (ASSET_DIR / "dice").iterdir())
 EVENT_SFX_FILES = {
@@ -45,8 +40,9 @@ def play_event_sfx(event: EventType):
     sfx.play()
 
 
-class GameWidget(kx.XFrame):
+class GameWidget(kx.XAnchor):
     def __init__(self, client: pgnet.Client, **kwargs):
+        logger.info("Creating game GUI...")
         super().__init__(**kwargs)
         self.state_hash = None
         self.state = logic.GameState.new_game()
@@ -58,6 +54,7 @@ class GameWidget(kx.XFrame):
         )
         self.client = client
         self._make_widgets()
+        logger.info("Widgets created.")
         hotkeys = self.app.game_controller
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
         hotkeys.register("slow down bots", "-", partial(self._user_set_bot_play_interval, 0.5))
@@ -75,6 +72,7 @@ class GameWidget(kx.XFrame):
         client.heartbeat_payload = self.heartbeat_payload
         self.bind(size=self._trigger_refresh)
         self._trigger_refresh()
+        logger.info("Game GUI created.")
 
     def on_subtheme(self, *args, **kwargs):
         super().on_subtheme(*args, **kwargs)
@@ -105,33 +103,30 @@ class GameWidget(kx.XFrame):
     def _make_widgets(self):
         self.clear_widgets()
         self.make_bg(kx.XColor(0.3, 0.3, 0.3))
+        self.track_frames = []
         self.track_squares = []
-        self.board_frame = kx.XRelative()
-        board_bg = kx.XLabel()
-        board_bg.make_bg(kx.XColor().modified_value(0.2))
-        self.board_frame.add_widget(board_bg)
-        self.board_frame.set_size()
-        self.spawn_frame = kx.XRelative()
-        self.spawn_frame.set_size(hx=0.3, hy=0.3)
+        self.unit_sprites = []
+        self.huds = []
+        self.track_frame = kx.XRelative()
+        self.center_frame = kx.XGrid(cols=2)
+        self.add_widgets(self.track_frame, self.center_frame)
+        # Track
         for i in range(logic.TRACK_SIZE):
             track_square = TrackSquare(i)
-            self.board_frame.add_widget(track_square)
+            track_square.set_size(hx=0.95, hy=0.95)
             self.track_squares.append(track_square)
-        self.unit_sprites = []
-        self.dice_boxes = []
-        self.dice_frame = kx.XAnchor()
-        self.dice_frame.set_size(hx=0.8, hy=0.8)
-        for player_index, (ax, ay) in enumerate(PLAYER_ANCHORS):
-            dicebox = DiceBox(player_index)
-            self.dice_frame.add_widget(kx.wrap(dicebox, anchor_x=ax, anchor_y=ay))
-            self.dice_boxes.append(dicebox)
-            self.unit_sprites.append([])
-            for unit_index in range(logic.UNIT_COUNT):
-                unit = UnitSprite(player_index, unit_index)
-                self.unit_sprites[-1].append(unit)
-        board_frame = kx.XAnchor()
-        board_frame.add_widgets(self.board_frame, self.spawn_frame, self.dice_frame)
-        self.add_widget(board_frame)
+            track_frame = kx.wrap(track_square)
+            self.track_frames.append(track_frame)
+            self.track_frame.add_widget(track_frame)
+        # Player units and huds
+        for pindex in range(logic.PLAYER_COUNT):
+            sprites = [UnitSprite(pindex, uindex) for uindex in range(logic.UNIT_COUNT)]
+            self.unit_sprites.append(sprites)
+            hud = Hud(pindex)
+            self.huds.append(hud)
+        # Add huds in correct order (clockwise from bottom-left)
+        for pindex in (1, 2, 0, 3):
+            self.center_frame.add_widget(self.huds[pindex])
 
     def _trigger_refresh(self, *args):
         kx.snooze_trigger(self.__refresh_trigger)
@@ -141,51 +136,63 @@ class GameWidget(kx.XFrame):
         kx.schedule_once(self._refresh_widgets)
 
     def _refresh_geometry(self, *args):
-        width = self.board_frame.width
-        height = self.board_frame.height
+        width = self.width
+        height = self.height
         square_x = width / (logic.BOARD_SIZE + 1)
         square_y = height / (logic.BOARD_SIZE + 1)
-        for i, square in enumerate(self.track_squares):
-            square.set_size(square_x * 0.9, square_y * 0.9)
+        self.center_frame.set_size(x=width - square_x * 2, y=height - square_y * 2)
+        for i, frame in enumerate(self.track_frames):
+            frame.set_size(square_x, square_y)
             quarter = i // logic.BOARD_SIZE
             offset = i % logic.BOARD_SIZE
-            match quarter:
-                case 0:
-                    square.x = 0
-                    square.y = square_y * offset
-                case 1:
-                    square.x = square_x * offset
-                    square.y = height - square_y
-                case 2:
-                    square.x = width - square_x
-                    square.y = height - square_y * (offset + 1)
-                case 3:
-                    square.x = width - square_x * (offset + 1)
-                    square.y = 0
-                case _:
-                    square.x = square_x
-                    square.y = square_y
+            if quarter == 0:
+                frame.x = 0
+                frame.y = square_y * offset
+            elif quarter == 1:
+                frame.x = square_x * offset
+                frame.y = height - square_y
+            elif quarter == 2:
+                frame.x = width - square_x
+                frame.y = height - square_y * (offset + 1)
+            elif quarter == 3:
+                frame.x = width - square_x * (offset + 1)
+                frame.y = 0
+            else:
+                raise RuntimeError(f"not a valid quarter {i=} {quarter=} {frame=}")
 
     def _refresh_widgets(self, *args):
         player = self.state.get_player()
         current_index = player.index
         for player, sprites in zip(self.state.players, self.unit_sprites):
             highlight = player.index == current_index
-            highlight_die = self.chosen_die if highlight else None
-            self.dice_boxes[player.index].set_dice(
-                player.dice, highlight, highlight_die
-            )
+            selected_die = self.chosen_die if highlight else None
+            hud = self.huds[player.index]
+            hud.set(highlight, player.dice, selected_die)
             starting_square = self.track_squares[logic.STARTING_POSITIONS[player.index]]
             starting_square.label.text = f"{round(100 * player.get_progress(), 1)}%"
             for unit, sprite in reversed(list(zip(player.units, sprites))):
-                match unit.position:
-                    case logic.Position.FINISH:
-                        sprite.remove_from_parent()
-                    case logic.Position.SPAWN:
-                        sprite.move_to_spawn(self.spawn_frame)
-                    case logic.Position.TRACK:
-                        square = self.track_squares[unit.get_position(player.index)]
-                        sprite.move_to_track(square)
+                remove_from_parent(sprite)
+                if unit.position == logic.Position.FINISH:
+                    sprite.set_size(hx=0.9, hy=0.9)
+                    hud.add_to_finishline(sprite.unit_index, sprite)
+                elif unit.position == logic.Position.SPAWN:
+                    sprite.set_size(hx=0.5, hy=0.5)
+                    hud.add_to_spawnbox(sprite.unit_index, sprite)
+                elif unit.position == logic.Position.TRACK:
+                    sprite.set_size(hx=0.4, hy=0.5)
+                    unit_pos = unit.get_position(player.index)
+                    frame = self.track_squares[unit_pos].unit_frame
+                    x_offset = unit.index * frame.width / 30
+                    sprite.pos = [
+                        (x_offset, 0),
+                        (x_offset + frame.width / 2, 0),
+                        (x_offset + frame.width / 2, frame.height / 2),
+                        (x_offset, frame.height / 2),
+                    ][player.index]
+                    frame.add_widget(sprite)
+
+                else:
+                    raise RuntimeError(f"unregocnized {unit.position=}")
 
     def _user_roll(self):
         self.client.send(pgnet.Packet("roll"), self._on_response)
@@ -220,8 +227,7 @@ class TrackSquare(kx.XAnchor):
             color = color.modified_saturation(0.5).modified_value(0.4)
         else:
             color = color.modified_value(0.075)
-        self.add_widget(self.label)
-        self.add_widget(self.unit_frame)
+        self.add_widgets(self.label, self.unit_frame)
         self.make_bg(color)
 
 
@@ -242,61 +248,69 @@ class UnitSprite(kx.XAnchor):
         )
         self.add_widget(self.label)
 
-    def move_to_spawn(self, frame):
-        self.remove_from_parent()
-        self.set_size(hx=0.25, hy=0.25)
-        self.x = self.unit_index * self.width
-        self.y = self.player_index * self.height
-        frame.add_widget(self)
 
-    def move_to_track(self, track_square: TrackSquare):
-        frame = track_square.unit_frame
-        self.remove_from_parent()
-        self.set_size(hx=0.4, hy=0.5)
-        x_offset = self.unit_index * frame.width / 30
-        match self.player_index:
-            case 0:
-                self.pos = x_offset, 0
-            case 1:
-                self.pos = x_offset + frame.width / 2, 0
-            case 2:
-                self.pos = x_offset + frame.width / 2, frame.height / 2
-            case 3:
-                self.pos = x_offset, frame.height / 2
-        frame.add_widget(self)
-
-    def remove_from_parent(self):
-        if self.parent:
-            self.parent.remove_widget(self)
-
-
-class DiceBox(kx.XAnchor):
-    def __init__(self, player_index):
+class Hud(kx.XAnchor):
+    def __init__(self, player_index: int):
         super().__init__()
-        self.set_size(hx=0.35, hy=0.1)
         self.color = PLAYER_COLORS[player_index]
-        self.frame = kx.XBox()
-        self.add_widget(kx.pwrap(self.frame))
-
-    def set_dice(self, dice: list[int], highlight: bool, highlight_die: Optional[int]):
-        if highlight:
-            self.make_bg(kx.XColor.white())
-            self.frame.make_bg(self.color)
-        else:
-            self.make_bg(kx.XColor.black())
-            self.frame.make_bg(self.color.modified_value(0.5))
-        self.frame.clear_widgets()
-        for i, die in enumerate(dice):
-            label = kx.XLabel(
-                text=str(die),
+        self.main_frame = kx.XBox(orientation="vertical")
+        self.main_frame.make_bg(self.color.modified_value(0.5))
+        # Spawn
+        self.spawnbox = [kx.XAnchor() for uindex in range(logic.UNIT_COUNT)]
+        spawnbox = kx.XBox()
+        spawnbox.add_widgets(*self.spawnbox)
+        spawnbox.make_bg(kx.XColor.black().modified_alpha(0.5))
+        # Dicebox
+        self.dicebox = [
+            kx.XLabel(
                 enable_theming=False,
                 bold=True,
-                color=[1, 1, 1] if highlight else [0.5, 0.5, 0.5],
-                outline_width="3sp",
                 font_size="30sp",
+                outline_width="3sp",
             )
-            if i == highlight_die:
-                label.make_bg(kx.XColor.black())
-            self.frame.add_widget(kx.pwrap(label))
-        while len(self.frame.children) < logic.DICE_COUNT:
-            self.frame.add_widget(kx.XAnchor())
+            for i in range(logic.DICE_COUNT)
+        ]
+        dicebox = kx.XBox()
+        dicebox.add_widgets(*(kx.pwrap(lbl) for lbl in self.dicebox))
+        dicebox.make_bg(kx.XColor.black().modified_alpha(0.3))
+        # Finish line
+        self.finishline = [kx.XAnchor() for uindex in range(logic.UNIT_COUNT)]
+        finishbox = kx.XBox()
+        finishbox.add_widgets(*self.finishline)
+        self.finish_label = kx.XLabel(text="Finish Line", color=(0, 0, 0), font_size="30sp")
+        self.finish_label.make_bg(self.color.modified_value(0.5))
+        finishline = kx.pwrap(self.finish_label)
+        finishline.make_bg(self.color)
+        finishline.add_widget(finishbox)
+        # Assemble
+        self.add_widget(kx.pwrap(self.main_frame))
+        widgets = [kx.pwrap(spawnbox), kx.pwrap(dicebox), kx.pwrap(finishline)]
+        if player_index in (1, 2):  # Flip order for top huds to mirror vertically
+            widgets = reversed(widgets)
+        self.main_frame.add_widgets(*widgets)
+
+    def add_to_spawnbox(self, index, sprite):
+        self.spawnbox[index].add_widget(sprite)
+
+    def add_to_finishline(self, index, sprite):
+        self.finishline[index].add_widget(sprite)
+        self.finish_label.text = ""
+
+    def set(
+        self,
+        highlight: bool,
+        dice: list[int],
+        selected_die: Optional[int],
+    ):
+        self.make_bg(kx.XColor() if highlight else kx.XColor(a=0))
+        self.main_frame.make_bg(self.color.modified_value(0.5 if highlight else 0.2))
+        for i, die_value in itertools.zip_longest(range(logic.DICE_COUNT), dice):
+            label = self.dicebox[i]
+            label.text = "" if die_value is None else str(die_value)
+            label.color = [1, 1, 1] if highlight else [0.5, 0.5, 0.5]
+            label.make_bg(kx.XColor.black() if i == selected_die else kx.XColor(a=0))
+
+
+def remove_from_parent(widget):
+    if widget.parent:
+        widget.parent.remove_widget(widget)
