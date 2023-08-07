@@ -60,6 +60,8 @@ class GameWidget(kx.XFrame):
         self._make_widgets()
         hotkeys = self.app.game_controller
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
+        hotkeys.register("slow down bots", "-", partial(self._user_set_bot_play_interval, 0.5))
+        hotkeys.register("speed up bots", "=", partial(self._user_set_bot_play_interval, -0.5))
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("roll", "spacebar", self._user_roll)
         hotkeys.register("roll", "`")
@@ -192,6 +194,13 @@ class GameWidget(kx.XFrame):
             payload = dict(die_index=self.chosen_die, unit_index=index)
             self.client.send(pgnet.Packet("move", payload), self._on_response)
         self._refresh_widgets()
+
+    def _user_set_bot_play_interval(self, delta):
+        payload = dict(delta=delta)
+        self.client.send(
+            pgnet.Packet("set_bot_play_interval", payload),
+            self._on_response,
+        )
 
 
 class TrackSquare(kx.XAnchor):

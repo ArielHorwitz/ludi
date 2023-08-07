@@ -5,7 +5,8 @@ from pgnet import Packet, Response, Status
 import logic
 import time
 
-BOT_PLAY_INTERVAL = 2
+DEFAULT_BOT_PLAY_INTERVAL = 2
+MAX_BOT_PLAY_INTERVAL = 10
 
 
 class GameServer(pgnet.Game):
@@ -15,6 +16,7 @@ class GameServer(pgnet.Game):
             if save_string is None
             else logic.GameState.from_json(save_string)
         )
+        self.bot_play_interval = DEFAULT_BOT_PLAY_INTERVAL
         self.connected_players = set()
         self.human_players = [None] * logic.PLAYER_COUNT
         self.next_bot_play: Optional[float] = None
@@ -50,14 +52,16 @@ class GameServer(pgnet.Game):
 
     # Logic
     def update(self):
+        if self.state.winner is not None:
+            return
         if not self.is_bot(self.state.get_player().index):
             self.next_bot_play = None
             return
         if self.next_bot_play is None:
-            self.next_bot_play = time.time() + BOT_PLAY_INTERVAL
+            self.next_bot_play = time.time() + self.bot_play_interval
         elif self.next_bot_play < time.time():
             self.state.play_bot()
-            self.next_bot_play = time.time() + BOT_PLAY_INTERVAL
+            self.next_bot_play = time.time() + self.bot_play_interval
 
     def handle_heartbeat(self, packet: Packet) -> Response:
         state_hash = hash(self.state)
@@ -75,8 +79,6 @@ class GameServer(pgnet.Game):
     def handle_game_packet(self, packet: Packet) -> Response:
         if self.state.winner is not None:
             return Response("Game is over.", status=Status.UNEXPECTED)
-        if packet.username != self.human_players[self.state.get_player().index]:
-            return Response("Not your turn.", status=Status.UNEXPECTED)
         method_name = f"_user_{packet.message}"
         if not hasattr(self, method_name):
             return Response(
@@ -88,13 +90,26 @@ class GameServer(pgnet.Game):
 
     # User commands
     def _user_roll(self, packet: Packet) -> Response:
+        if packet.username != self.human_players[self.state.get_player().index]:
+            return Response("Not your turn.", status=Status.UNEXPECTED)
         if self.state.roll_dice():
             return Response("Ok")
         return Response("Roll failed", status=Status.UNEXPECTED)
 
     def _user_move(self, packet: Packet) -> Response:
+        if packet.username != self.human_players[self.state.get_player().index]:
+            return Response("Not your turn.", status=Status.UNEXPECTED)
         unit_index = int(packet.payload.get("unit_index", -1))
         die_index = int(packet.payload.get("die_index", -1))
         if self.state.move_unit(unit_index, die_index):
             return Response("Ok")
         return Response("Move failed", status=Status.UNEXPECTED)
+
+    def _user_set_bot_play_interval(self, packet: Packet) -> Response:
+        value = packet.payload.get("interval", DEFAULT_BOT_PLAY_INTERVAL)
+        delta = packet.payload.get("delta", 0)
+        if delta != 0:
+            value = self.bot_play_interval
+        self.bot_play_interval = max(0, min(MAX_BOT_PLAY_INTERVAL, value + delta))
+        self.next_bot_play = time.time()
+        return Response(f"Bot play interval: {self.bot_play_interval}")

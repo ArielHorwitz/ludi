@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 from enum import Enum
+from loguru import logger
 import tokenizer
 import copy
 import itertools
@@ -34,6 +35,22 @@ TURN_ORDER_HANDICAP = tuple(
     round(_AVG_ROLL * i / PLAYER_COUNT) for i in range(PLAYER_COUNT)
 )
 UNIT_NAMES = "ABCDEFGHIJ"
+
+
+class BotEvalWeights:
+    turn = 10
+    finish = 20
+    safe = 5
+    spawn = -5
+    progress = 20
+    enemy_progress = -20
+    dice = 0.5
+
+
+class BotMove(NamedTuple):
+    unit: int
+    die: int
+    state: "GameState"
 
 
 class Position(Enum):
@@ -215,24 +232,54 @@ class GameState:
         best_move = sorted(
             legal_moves,
             key=lambda m: m.state.bot_evaluation(player_index),
-        )[0]
+        )[-1]
         self.move_unit(best_move.unit, best_move.die)
 
-    def bot_evaluation(self, player_index) -> float:
+    def bot_evaluation(self, player_index: int) -> float:
         player = self.players[player_index]
-        finished_units = [u.position == Position.FINISH for u in player.units]
-        unit_positions = [u.get_position(player_index) for u in player.units]
-        safe_units = set(unit_positions) & SAFE_POSITIONS
-        dice_value = sum(player.dice) / DICE_COUNT / ROLL_MAX - ROLL_MIN
-        return sum([
-            player.get_progress() * 10,
-            len(safe_units) / UNIT_COUNT * 5,
-            sum(finished_units) / UNIT_COUNT * 5,
-            dice_value * 2,
+        turns_away = (player.index - self.get_player().index) % PLAYER_COUNT
+        turn = (PLAYER_COUNT - turns_away - 1) / PLAYER_COUNT
+        units = player.units
+        finished_units = [u for u in units if u.position == Position.FINISH]
+        finish = len(finished_units) / UNIT_COUNT
+        spawning_units = [u for u in units if u.position == Position.SPAWN]
+        spawn = len(spawning_units) / UNIT_COUNT
+        safe_units = [
+            u
+            for u in units
+            if (
+                u.position == Position.TRACK
+                and u.get_position(player_index) in SAFE_POSITIONS
+            )
+        ]
+        safe = len(safe_units) / UNIT_COUNT
+        progress = player.get_progress()
+        total_enemy_progress = sum(p.get_progress() for p in self.players) - progress
+        enemy_progress = total_enemy_progress / (PLAYER_COUNT - 1)
+        if DICE_COUNT > 1:
+            dice_value = sum(player.dice) / (DICE_COUNT - 1)
+            dice = (dice_value - ROLL_MIN) / (ROLL_MAX - ROLL_MIN)
+        else:
+            dice = 0
+        total = sum([
+            turn * BotEvalWeights.turn,
+            finish * BotEvalWeights.finish,
+            safe * BotEvalWeights.safe,
+            spawn * BotEvalWeights.spawn,
+            progress * BotEvalWeights.progress,
+            enemy_progress * BotEvalWeights.enemy_progress,
+            dice * BotEvalWeights.dice,
         ])
-
-
-class BotMove(NamedTuple):
-    unit: int
-    die: int
-    state: GameState
+        logger.debug("\n".join([
+            f"Bot Evaluation for: {player.name}",
+            "\n".join(self.log[-2:]),
+            f"          {turn=}",
+            f"{finished_units=}",
+            f"    {safe_units=}",
+            f"{spawning_units=}",
+            f"      {progress=}",
+            f"{enemy_progress=}",
+            f"          {dice=}",
+            f"         {total=}",
+        ]))
+        return total
