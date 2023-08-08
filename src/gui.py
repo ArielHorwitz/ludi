@@ -24,7 +24,6 @@ DICE_IMAGES = [
     DICE_IMAGES_DIR / f"die{i}.png" for i in range(logic.ROLL_MIN, logic.ROLL_MAX + 1)
 ]
 DICE_IMAGES = tuple(path if path.exists() else None for path in DICE_IMAGES)
-print(DICE_IMAGES)
 DICE_SFX_DIR = ASSET_DIR / "sfx" / "dice"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (DICE_SFX_DIR).iterdir())
 EVENT_SFX_FILES = {
