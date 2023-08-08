@@ -1,8 +1,11 @@
+import dataclasses
 import itertools
+import math
 import random
+import time
 from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import kvex as kx
 import pgnet
@@ -13,6 +16,7 @@ import tokenizer
 from tokenizer import EventType
 
 DEFAULT_VOLUME = 0.5
+ANIMATION_FPS = 15
 PLAYER_COLORS = (
     kx.XColor.from_name("blue"),
     kx.XColor.from_name("green"),
@@ -193,6 +197,7 @@ class GameWidget(kx.XAnchor):
             last_turn = self.state.log[log_index] if has_last_turn else ""
             hud.set(highlight, progress, player.dice, selected_die, last_turn)
             for unit, sprite in reversed(list(zip(player.units, sprites))):
+                sprite.pulse.start() if highlight else sprite.pulse.stop()
                 remove_from_parent(sprite)
                 if unit.position == logic.Position.FINISH:
                     sprite.set_size(hx=0.9, hy=0.9)
@@ -263,7 +268,9 @@ class UnitSprite(kx.XAnchor):
         super().__init__()
         self.player_index = player_index
         self.unit_index = unit_index
-        self.make_bg(color=PLAYER_COLORS[player_index], source=ASSET_DIR / "unit.png")
+        self.color = PLAYER_COLORS[self.player_index].modified_value(0.5)
+        self.make_bg(self.color, ASSET_DIR / "unit.png")
+        self.pulse = Pulse(self._pulse, speed=3, guarantee_last=1)
         self.label = kx.XLabel(
             text=logic.UNIT_NAMES[unit_index],
             enable_theming=False,
@@ -276,8 +283,10 @@ class UnitSprite(kx.XAnchor):
         self.add_widget(self.label)
 
     def fade_finish(self):
-        color = PLAYER_COLORS[self.player_index]
-        self.make_bg(color.modified_saturation(0).modified_value(0.5))
+        self.make_bg(self.color.modified_saturation(0))
+
+    def _pulse(self, modulated: float):
+        self.make_bg(self.color.modified_saturation(modulated))
 
 
 class Hud(kx.XAnchor):
@@ -391,6 +400,56 @@ class Hud(kx.XAnchor):
                     sprite.color = invis.rgba
                     label.make_bg(invis)
                     label.text = ""
+
+
+@dataclasses.dataclass
+class Continuous:
+    callback: Callable[[float], None]
+    duration: Optional[float] = None
+    speed: float = 1
+    guarantee_last: Optional[float] = None
+    end_callback: Optional[Callable[[], None]] = None
+    start_time: float = 0
+    scheduled: Optional[Any] = None
+
+    @property
+    def active(self) -> bool:
+        return self.scheduled is not None
+
+    def start(self, *args):
+        self.stop()
+        self.start_time = time.time()
+        self.scheduled = kx.schedule_interval(self._event, 1 / ANIMATION_FPS)
+
+    def stop(self, *args):
+        was_active = self.active
+        if was_active:
+            self.scheduled.cancel()
+            self.scheduled = None
+        if was_active and self.guarantee_last is not None:
+            self.callback(self.guarantee_last)
+        if was_active and self.end_callback is not None:
+            self.end_callback()
+
+    def _event(self, *args):
+        assert self.active
+        assert self.speed > 0
+        elapsed = time.time() - self.start_time
+        duration = self.duration
+        if duration is not None and elapsed >= duration:
+            self.stop()
+            return
+        self.callback(self._get_value(elapsed))
+
+    def _get_value(self, elapsed: float) -> float:
+        value = elapsed * self.speed
+        return value / self.duration if self.duration else value
+
+
+@dataclasses.dataclass
+class Pulse(Continuous):
+    def _get_value(self, elapsed: float) -> float:
+        return math.fabs(math.sin(elapsed * self.speed))
 
 
 def remove_from_parent(widget):
