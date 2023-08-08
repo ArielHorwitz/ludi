@@ -1,5 +1,4 @@
 import itertools
-from typing import Optional
 
 import kvex as kx
 
@@ -15,6 +14,7 @@ DICE_IMAGES = tuple(path if path.exists() else None for path in DICE_IMAGES)
 class Hud(kx.XAnchor):
     def __init__(self, player_index: int):
         super().__init__()
+        self.player_index = player_index
         self.color = PLAYER_COLORS[player_index]
         self.main_frame = kx.XBox(orientation="vertical")
         self.main_frame.make_bg(self.color.modified_value(0.5))
@@ -88,43 +88,45 @@ class Hud(kx.XAnchor):
         self.finish_label.text = "Winner!"
         self.finish_label.font_size = "50sp"
 
-    def set(
-        self,
-        highlight: bool,
-        progress: float,
-        dice: list[int],
-        selected_die: Optional[int],
-        last_turn: str,
-    ):
+    def update(self, state: game.GameState, highlight_dice: list[int]):
+        # Collect data
+        current_index = state.get_player().index
+        player = state.players[self.player_index]
+        highlight = player.index == current_index
+        progress = player.get_progress()
+        turns_since = (current_index - player.index) % game.PLAYER_COUNT
+        has_last_turn = (log_index := -1 - turns_since) >= -len(state.log)
+        last_turn = state.log[log_index] if has_last_turn else ""
+        label_color = (0, 0, 0) if highlight else (1, 1, 1)
+        # Apply
         self.make_bg(kx.XColor() if highlight else kx.XColor(a=0))
         self.main_frame.make_bg(self.color.modified_value(0.75 if highlight else 0.15))
         self.progress_label.text = f"{progress * 100:.1f}%"
-        label_color = (0, 0, 0) if highlight else (1, 1, 1)
         self.progress_label.color = label_color
         self.log_label.color = label_color
         self.log_label.text = last_turn[3:] if last_turn else ""
-        for i, die_value in itertools.zip_longest(range(game.DICE_COUNT), dice):
+        for i, die_value in itertools.zip_longest(range(game.DICE_COUNT), player.dice):
+            highlight = i in highlight_dice
             sprite = self.dice_sprites[i]
             label = self.dice_labels[i]
             image_source = None if die_value is None else DICE_IMAGES[die_value - 1]
-            selected = i == selected_die
             saturated_color = self.color.modified_saturation(0.7)
+            sprite_color = kx.XColor() if highlight else saturated_color
             invis = kx.XColor(a=0)
-            white = kx.XColor()
-            match die_value is not None, image_source is not None:
-                case True, True:
-                    sprite.color = white.rgb if selected else saturated_color.rgb
-                    sprite.source = str(image_source)
-                    label.make_bg(invis)
-                    label.text = ""
-                case True, False:
-                    sprite.color = invis.rgba
-                    label.make_bg(white if selected else saturated_color)
-                    label.text = str(die_value)
-                case False, _:
-                    sprite.color = invis.rgba
-                    label.make_bg(invis)
-                    label.text = ""
+            if die_value is None:
+                sprite.color = invis.rgba
+                label.make_bg(invis)
+                label.text = ""
+                continue
+            if image_source is None:
+                sprite.color = invis.rgba
+                label.make_bg(sprite_color)
+                label.text = str(die_value)
+            else:
+                sprite.color = sprite_color.rgba
+                sprite.source = str(image_source)
+                label.make_bg(invis)
+                label.text = ""
 
 
 def remove_from_parent(widget):

@@ -79,6 +79,13 @@ class Unit:
     def name(self) -> str:
         return UNIT_NAMES[self.index]
 
+    def can_use_die(self, die_value: int) -> bool:
+        if self.position == Position.FINISH:
+            return False
+        if self.position == Position.SPAWN:
+            return die_value in RESCUE_ROLLS
+        return True
+
 
 @dataclass_json
 @dataclass
@@ -100,6 +107,14 @@ class Player:
     @property
     def name(self) -> str:
         return str(self.index + 1)
+
+    @property
+    def missing_dice(self) -> bool:
+        return len(self.dice) < DICE_COUNT
+
+    @property
+    def movable_units(self) -> tuple[int, ...]:
+        return tuple(u.index for u in self.units if u.position != Position.FINISH)
 
 
 @dataclass_json

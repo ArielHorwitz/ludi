@@ -20,7 +20,8 @@ class GameWidget(kx.XAnchor):
         self.state_hash = None
         self.state = game.GameState.new_game()
         self.player_names = set()
-        self.chosen_die: Optional[int] = None
+        self.selected_unit: Optional[int] = None
+        self.selected_die: Optional[int] = None
         self.__refresh_trigger = kx.create_trigger(
             self._full_refresh,
             timeout=config.GUI_REFRESH_TIMEOUT,
@@ -30,18 +31,17 @@ class GameWidget(kx.XAnchor):
         logger.info("Widgets created.")
         hotkeys = self.app.game_controller
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
-        set_botspeed = self._user_set_bot_play_interval
+        set_botspeed = self._set_bot_speed
         hotkeys.register("speed+ bots", "-", partial(set_botspeed, 0.5))
         hotkeys.register("speed- bots", "=", partial(set_botspeed, -0.5))
         hotkeys.register("leave", "^ escape", self.client.leave_game)
-        hotkeys.register("roll", "spacebar", self._user_roll)
-        hotkeys.register("roll", "`")
-        hotkeys.register("roll", "escape")
+        hotkeys.register("proceed", "spacebar", self._proceed)
+        hotkeys.register("cancel", "escape", self._cancel)
         for i in range(max(game.UNIT_COUNT, game.DICE_COUNT)):
             control = keynumber = str(i + 1)
             hotkeys.register(control, keynumber)  # Number keys
             hotkeys.register(control, f"f{keynumber}")  # F keys
-            hotkeys.bind(control, partial(self._select_index, i))
+            hotkeys.bind(control, partial(self._select, i))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
         self.bind(size=self._trigger_refresh)
@@ -67,6 +67,7 @@ class GameWidget(kx.XAnchor):
                 config.play_event_sfx(last_event)
             else:
                 config.play_victory_sfx()
+        self._clear_selections()
         self._refresh_widgets()
 
     def heartbeat_payload(self) -> str:
@@ -74,8 +75,6 @@ class GameWidget(kx.XAnchor):
 
     def _on_response(self, response: pgnet.Response):
         logger.debug(response)
-        self.chosen_die = None
-        self._refresh_widgets()
 
     def _make_widgets(self):
         self.clear_widgets()
@@ -138,19 +137,39 @@ class GameWidget(kx.XAnchor):
                 raise RuntimeError(f"not a valid quarter {i=} {quarter=} {frame=}")
 
     def _refresh_widgets(self, *args):
-        player = self.state.get_player()
-        current_index = player.index
+        # Resolve selection highlights
+        turn_player = self.state.get_player()
+        turn_index = turn_player.index
+        rolled = not turn_player.missing_dice
+        unit_selected = self.selected_unit is not None
+        die_selected = self.selected_die is not None
+        match rolled, unit_selected, die_selected:
+            case True, True, True:
+                highlight_units = [self.selected_unit]
+                highlight_dice = [self.selected_die]
+            case True, True, False:
+                unit = turn_player.units[self.selected_unit]
+                highlight_units = [self.selected_unit]
+                highlight_dice = [
+                    i for i, d in enumerate(turn_player.dice) if unit.can_use_die(d)
+                ]
+            case True, False, _:
+                highlight_units = turn_player.movable_units
+                highlight_dice = []
+            case False, _, _:
+                highlight_units = []
+                highlight_dice = []
+        logger.debug(f"{self.selected_unit=} {highlight_units=}")
+        logger.debug(f" {self.selected_die=} {highlight_dice=}")
+        # Apply loop
         for player, sprites in zip(self.state.players, self.unit_sprites):
+            my_turn = player.index == turn_index
             hud = self.huds[player.index]
-            highlight = player.index == current_index
-            progress = player.get_progress()
-            selected_die = self.chosen_die if highlight else None
-            turns_since = (current_index - player.index) % game.PLAYER_COUNT
-            has_last_turn = (log_index := -1 - turns_since) >= -len(self.state.log)
-            last_turn = self.state.log[log_index] if has_last_turn else ""
-            hud.set(highlight, progress, player.dice, selected_die, last_turn)
+            hud.update(self.state, highlight_dice if my_turn else [])
             for unit, sprite in reversed(list(zip(player.units, sprites))):
+                highlight = my_turn and unit.index in highlight_units
                 sprite.pulse.start() if highlight else sprite.pulse.stop()
+                assert unit.position in game.Position
                 if unit.position == game.Position.FINISH:
                     sprite.set_size(hx=0.9, hy=0.9)
                     sprite.fade_finish()
@@ -159,41 +178,58 @@ class GameWidget(kx.XAnchor):
                     sprite.set_size(hx=0.5, hy=0.5)
                     hud.add_to_spawnbox(sprite.unit_index, sprite)
                 elif unit.position == game.Position.TRACK:
-                    if sprite.parent:
-                        sprite.parent.remove_widget(sprite)
-                    sprite.set_size(hx=0.4, hy=0.5)
                     unit_pos = unit.get_position(player.index)
-                    frame = self.track_squares[unit_pos].unit_frame
-                    x_offset = unit.index * frame.width / 30
-                    sprite.pos = [
-                        (x_offset, 0),
-                        (x_offset + frame.width / 2, 0),
-                        (x_offset + frame.width / 2, frame.height / 2),
-                        (x_offset, frame.height / 2),
-                    ][player.index]
-                    frame.add_widget(sprite)
-                else:
-                    raise RuntimeError(f"unregocnized {unit.position=}")
-        if current_index == self.state.winner:
-            self.huds[current_index].set_winner()
+                    self.track_squares[unit_pos].add_unit(sprite)
+        if turn_index == self.state.winner:
+            self.huds[turn_index].set_winner()
 
-    def _user_roll(self):
-        self.client.send(pgnet.Packet("roll"), self._on_response)
-        self._refresh_widgets()
-
-    def _select_index(self, index: int):
-        if self.chosen_die is None:
-            self.chosen_die = index
-        else:
-            payload = dict(die_index=self.chosen_die, unit_index=index)
+    def _proceed(self):
+        if self.state.get_player().missing_dice:
+            self.client.send(pgnet.Packet("roll"), self._on_response)
+            self._clear_selections()
+            self._refresh_widgets()
+        elif self.selected_unit is not None and self.selected_die is not None:
+            payload = dict(
+                unit_index=self.selected_unit,
+                die_index=self.selected_die,
+            )
             self.client.send(pgnet.Packet("move", payload), self._on_response)
+
+    def _cancel(self):
+        self.client.flush_queue()
+        self._clear_selections()
         self._refresh_widgets()
 
-    def _user_set_bot_play_interval(self, delta):
+    def _select(self, index: int):
+        player = self.state.get_player()
+        if player.missing_dice:
+            logger.debug("cannot select when missing rolls")
+            return
+        if self.selected_unit is None:
+            if index in player.movable_units:
+                self.selected_unit = index
+                self.selected_die = None
+                logger.debug(f"selected unit: {index}")
+            else:
+                logger.debug(f"cannot select unit: {index}")
+        elif self.selected_die is None:
+            if player.units[self.selected_unit].can_use_die(index):
+                self.selected_die = index
+                logger.debug(f"selected die: {index}")
+            else:
+                logger.debug(f"cannot select die: {index}")
+        else:
+            logger.debug("already selected")
+        self._refresh_widgets()
+
+    def _clear_selections(self, *a):
+        self.selected_unit = None
+        self.selected_die = None
+
+    def _set_bot_speed(self, delta):
         payload = dict(delta=delta)
         self.client.send(
-            pgnet.Packet("set_bot_play_interval", payload),
-            self._on_response,
+            pgnet.Packet("set_bot_play_interval", payload), self._on_response
         )
 
 
@@ -215,3 +251,16 @@ class TrackSquare(kx.XAnchor):
             color = color.modified_value(0.075)
         self.add_widgets(self.label, self.unit_frame)
         self.make_bg(color)
+
+    def add_unit(self, sprite: UnitSprite):
+        if sprite.parent:
+            sprite.parent.remove_widget(sprite)
+        sprite.set_size(hx=0.4, hy=0.5)
+        x_offset = sprite.unit_index * self.width / 30
+        sprite.pos = [
+            (x_offset, 0),
+            (x_offset + self.width / 2, 0),
+            (x_offset + self.width / 2, self.height / 2),
+            (x_offset, self.height / 2),
+        ][sprite.player_index]
+        self.unit_frame.add_widget(sprite)
