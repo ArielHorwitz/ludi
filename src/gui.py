@@ -24,7 +24,8 @@ DICE_IMAGES = [
     DICE_IMAGES_DIR / f"die{i}.png" for i in range(logic.ROLL_MIN, logic.ROLL_MAX + 1)
 ]
 DICE_IMAGES = tuple(path if path.exists() else None for path in DICE_IMAGES)
-DICE_SFX_DIR = ASSET_DIR / "sfx" / "dice"
+SFX_DIR = ASSET_DIR / "sfx"
+DICE_SFX_DIR = SFX_DIR / "dice"
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (DICE_SFX_DIR).iterdir())
 EVENT_SFX_FILES = {
     evtype: ASSET_DIR / "sfx" / f"{evtype.name.lower().replace('_', '-')}.wav"
@@ -33,19 +34,22 @@ EVENT_SFX_FILES = {
 EVENT_SFX = {
     evtype: kx.SoundLoader.load(str(path)) for evtype, path in EVENT_SFX_FILES.items()
 }
+VICTORY_SFX = kx.SoundLoader.load(str(SFX_DIR / "victory.wav"))
 TURN_START_SFX_DELAY = 0.2
 GUI_REFRESH_TIMEOUT = 0.5
 
 
-def play_event_sfx(event: EventType):
-    if event == EventType.DICE_ROLLED:
-        sfx = random.choice(DICE_SFX)
-    else:
-        sfx = EVENT_SFX[event]
+def play_sfx(sfx):
     if sfx.get_pos():
         sfx.stop()
     sfx.volume = DEFAULT_VOLUME
     sfx.play()
+
+
+def get_event_sfx(event: EventType):
+    if event == EventType.DICE_ROLLED:
+        return random.choice(DICE_SFX)
+    return EVENT_SFX[event]
 
 
 class GameWidget(kx.XAnchor):
@@ -99,9 +103,12 @@ class GameWidget(kx.XAnchor):
         last_event = tokenizer.tokenize_turn(self.state.log[-1])[-1]
         if last_event == EventType.TURN_START and len(self.state.log) > 1:
             prev_event = tokenizer.tokenize_turn(self.state.log[-2])[-1]
-            play_event_sfx(prev_event)
+            play_sfx(get_event_sfx(prev_event))
         else:
-            play_event_sfx(last_event)
+            if self.state.winner is None:
+                play_sfx(get_event_sfx(last_event))
+            else:
+                play_sfx(VICTORY_SFX)
         self._refresh_widgets()
 
     def heartbeat_payload(self) -> str:
