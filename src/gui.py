@@ -208,9 +208,10 @@ class GameWidget(kx.XAnchor):
                         (x_offset, frame.height / 2),
                     ][player.index]
                     frame.add_widget(sprite)
-
                 else:
                     raise RuntimeError(f"unregocnized {unit.position=}")
+        if current_index == self.state.winner:
+            self.huds[current_index].set_winner()
 
     def _user_roll(self):
         self.client.send(pgnet.Packet("roll"), self._on_response)
@@ -338,6 +339,12 @@ class Hud(kx.XAnchor):
     def add_to_finishline(self, index, sprite):
         self.finishline[index].add_widget(sprite)
         self.finish_label.text = ""
+
+    def set_winner(self):
+        for unit_frame in self.finishline:
+            remove_from_parent(unit_frame)
+        self.finish_label.text = "Winner!"
+        self.finish_label.font_size = "50sp"
 
     def set(
         self,
