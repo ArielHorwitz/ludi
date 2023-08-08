@@ -185,8 +185,6 @@ class GameWidget(kx.XAnchor):
             has_last_turn = (log_index := -1 - turns_since) >= -len(self.state.log)
             last_turn = self.state.log[log_index] if has_last_turn else ""
             hud.set(highlight, progress, player.dice, selected_die, last_turn)
-            starting_square = self.track_squares[logic.STARTING_POSITIONS[player.index]]
-            starting_square.label.text = f"{round(100 * player.get_progress(), 1)}%"
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 remove_from_parent(sprite)
                 if unit.position == logic.Position.FINISH:
