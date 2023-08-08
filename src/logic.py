@@ -116,7 +116,7 @@ class GameState:
     @classmethod
     def new_game(cls) -> "GameState":
         game = cls()
-        game.log.append(tokenizer.start_turn(game.get_player().name))
+        game.log.append(tokenizer.turn_start(game.get_player().name))
         # Start all units
         for player in game.players:
             unit = player.units[0]
@@ -180,7 +180,7 @@ class GameState:
                 self.log[-1] += tokenizer.unit_finish(unit.name, die_value)
                 if all(unit.position == Position.FINISH for unit in player.units):
                     self.winner = player.index
-                    self.log[-1] += tokenizer.GAME_OVER_CHAR
+                    self.log[-1] += tokenizer.Symbol.GAME_OVER
                     turn_ends = False
             else:
                 captured = self._do_capture(
@@ -197,7 +197,7 @@ class GameState:
                     self.log[-1] += tokenizer.unit_move(unit.name, die_value)
             if turn_ends:
                 self.turn += 1
-                self.log.append(tokenizer.start_turn(self.get_player().name))
+                self.log.append(tokenizer.turn_start(self.get_player().name))
             return True
 
     def _do_capture(
