@@ -242,11 +242,14 @@ class TrackSquare(kx.XAnchor):
     def __init__(self, position: int):
         super().__init__()
         self.unit_frame = kx.XRelative()
-        offset = position % logic.BOARD_SIZE
-        self.label = kx.XLabel(text=str(offset), enable_theming=False)
+        self.label = kx.XLabel(
+            text=str(position % logic.BOARD_SIZE),
+            enable_theming=False,
+        )
         color = PLAYER_COLORS[position // logic.BOARD_SIZE]
         if position in logic.STARTING_POSITIONS:
             color = color.modified_value(0.5)
+            self.label.text = ""
         elif position in logic.STAR_POSITIONS:
             color = color.modified_saturation(0.5).modified_value(0.4)
         else:
