@@ -1,13 +1,14 @@
-from typing import Optional, NamedTuple
-import random
-from dataclasses import dataclass, field
-from dataclasses_json import dataclass_json
-from enum import Enum
-from loguru import logger
-import tokenizer
 import copy
 import itertools
+import random
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import NamedTuple, Optional
 
+from dataclasses_json import dataclass_json
+from loguru import logger
+
+import tokenizer
 
 # Configurable constants
 BOARD_SIZE = 13

@@ -1,15 +1,16 @@
-from typing import Optional
-from pathlib import Path
 import itertools
 import random
+from functools import partial
+from pathlib import Path
+from typing import Optional
+
 import kvex as kx
 import pgnet
+from loguru import logger
+
 import logic
 import tokenizer
-from loguru import logger
 from tokenizer import EventType
-from functools import partial
-
 
 DEFAULT_VOLUME = 0.5
 PLAYER_COLORS = (
