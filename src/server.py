@@ -5,7 +5,7 @@ import pgnet
 from loguru import logger
 from pgnet import Packet, Response, Status
 
-import logic
+import game
 
 DEFAULT_BOT_PLAY_INTERVAL = 2
 MAX_BOT_PLAY_INTERVAL = 10
@@ -14,13 +14,13 @@ MAX_BOT_PLAY_INTERVAL = 10
 class GameServer(pgnet.Game):
     def __init__(self, *args, save_string: Optional[str] = None, **kwargs):
         self.state = (
-            logic.GameState.new_game()
+            game.GameState.new_game()
             if save_string is None
-            else logic.GameState.from_json(save_string)
+            else game.GameState.from_json(save_string)
         )
         self.bot_play_interval = DEFAULT_BOT_PLAY_INTERVAL
         self.connected_players = set()
-        self.human_players = [None] * logic.PLAYER_COUNT
+        self.human_players = [None] * game.PLAYER_COUNT
         self.next_bot_play: Optional[float] = None
         self.heartbeat_rate = 2
         super().__init__(*args, **kwargs)

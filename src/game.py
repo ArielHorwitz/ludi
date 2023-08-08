@@ -9,17 +9,16 @@ from dataclasses_json import dataclass_json
 from loguru import logger
 
 import tokenizer
+from config import (
+    BOARD_SIZE,
+    DICE_COUNT,
+    RESCUE_ROLLS,
+    ROLL_MAX,
+    ROLL_MIN,
+    SAFE_POSITION_OFFSET,
+    UNIT_COUNT,
+)
 
-# Configurable constants
-BOARD_SIZE = 13
-UNIT_COUNT = 4
-DICE_COUNT = 2
-ROLL_MIN = 1
-ROLL_MAX = 6
-SAFE_POSITION_OFFSET = 8
-RESCUE_ROLLS = frozenset([ROLL_MIN, ROLL_MAX])
-
-# Other constants
 PLAYER_COUNT = 4
 TRACK_SIZE = BOARD_SIZE * 4
 _AVG_ROLL = (ROLL_MIN + ROLL_MAX) / 2

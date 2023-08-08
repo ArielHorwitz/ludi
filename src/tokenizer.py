@@ -54,6 +54,8 @@ def unit_capture(
 
 def tokenize_word(word: str) -> EventType:
     word, original = word.strip(), word
+    if word.endswith(Symbol.GAME_OVER):
+        word = word[:-1]
     if word.endswith(Symbol.START):
         return EventType.TURN_START
     if word.endswith(Symbol.DICE):
