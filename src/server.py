@@ -1,7 +1,6 @@
 import time
 from typing import Optional
 
-import kvex as kx
 import pgnet
 from loguru import logger
 from pgnet import Packet, Response, Status
