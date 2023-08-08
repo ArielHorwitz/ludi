@@ -172,27 +172,28 @@ class GameState:
             assert unit.position == Position.TRACK
             player.dice.pop(die_index)
             unit.track_distance += die_value
-            extra_turn = False
+            turn_ends = True
             if unit.track_distance >= TRACK_SIZE:
                 unit.track_distance = TRACK_SIZE
                 unit.position = Position.FINISH
                 self.log[-1] += tokenizer.unit_finish(unit.name, die_value)
                 if all(unit.position == Position.FINISH for unit in player.units):
                     self.winner = player.index
+                    turn_ends = False
             else:
                 captured = self._do_capture(
                     player.index,
                     unit.get_position(player.index),
                 )
                 if captured:
-                    extra_turn = True
+                    turn_ends = False
                     self.log[-1] += tokenizer.unit_capture(
                         unit.name, die_value, captured
                     )
                 else:
-                    extra_turn = die_value == ROLL_MAX
+                    turn_ends = die_value == ROLL_MAX
                     self.log[-1] += tokenizer.unit_move(unit.name, die_value)
-            if not extra_turn:
+            if turn_ends:
                 self.turn += 1
                 self.log.append(tokenizer.start_turn(self.get_player().name))
             return True
