@@ -193,7 +193,7 @@ class GameState:
                         unit.name, die_value, captured
                     )
                 else:
-                    turn_ends = die_value == ROLL_MAX
+                    turn_ends = die_value != ROLL_MAX
                     self.log[-1] += tokenizer.unit_move(unit.name, die_value)
             if turn_ends:
                 self.turn += 1
