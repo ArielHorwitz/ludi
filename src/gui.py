@@ -11,6 +11,7 @@ from tokenizer import EventType
 from functools import partial
 
 
+DEFAULT_VOLUME = 0.5
 PLAYER_COLORS = (
     kx.XColor.from_name("blue"),
     kx.XColor.from_name("green"),
@@ -44,6 +45,7 @@ def play_event_sfx(event: EventType):
         sfx = EVENT_SFX[event]
     if sfx.get_pos():
         sfx.stop()
+    sfx.volume = DEFAULT_VOLUME
     sfx.play()
 
 
