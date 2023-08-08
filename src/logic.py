@@ -179,6 +179,7 @@ class GameState:
                 self.log[-1] += tokenizer.unit_finish(unit.name, die_value)
                 if all(unit.position == Position.FINISH for unit in player.units):
                     self.winner = player.index
+                    self.log[-1] += tokenizer.GAME_OVER_CHAR
                     turn_ends = False
             else:
                 captured = self._do_capture(

@@ -1,5 +1,7 @@
 from enum import Enum
 
+GAME_OVER_CHAR = "#"
+
 
 class EventType(Enum):
     TURN_START = 1
