@@ -8,18 +8,31 @@ import kvex as kx
 from config import ANIMATION_FPS
 
 
+class Interp:
+    @staticmethod
+    def linear(anim: "Animation", elapsed: float) -> float:
+        value = elapsed * anim.speed
+        return value / anim.duration if anim.duration else value
+
+    @staticmethod
+    def pulse(anim: "Animation", elapsed: float) -> float:
+        return math.fabs(math.sin(elapsed * anim.speed))
+
+    @staticmethod
+    def flat(anim: "Animation", elapsed: float) -> float:
+        return anim.speed
+
+
 @dataclasses.dataclass
-class Continuous:
+class Animation:
     callback: Callable[[float], None]
+    interpolation: Callable[["Animation", float], float] = Interp.linear
     duration: Optional[float] = None
     speed: float = 1
     guarantee_last: Optional[float] = None
     end_callback: Optional[Callable[[], None]] = None
     start_time: float = 0
     scheduled: Optional[Any] = None
-
-    def __post_init__(self):
-        assert callable(self._get_value)
 
     @property
     def active(self) -> bool:
@@ -48,17 +61,4 @@ class Continuous:
         if duration is not None and elapsed >= duration:
             self.stop()
             return
-        self.callback(self._get_value(elapsed))
-
-
-@dataclasses.dataclass
-class Linear(Continuous):
-    def _get_value(self, elapsed: float) -> float:
-        value = elapsed * self.speed
-        return value / self.duration if self.duration else value
-
-
-@dataclasses.dataclass
-class Pulse(Continuous):
-    def _get_value(self, elapsed: float) -> float:
-        return math.fabs(math.sin(elapsed * self.speed))
+        self.callback(self.interpolation(self, elapsed))
