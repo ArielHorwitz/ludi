@@ -30,6 +30,7 @@ class Animation:
     duration: Optional[float] = None
     speed: float = 1
     guarantee_last: Optional[float] = None
+    start_callback: Optional[Callable[[], None]] = None
     end_callback: Optional[Callable[[], None]] = None
     start_time: float = 0
     scheduled: Optional[Any] = None
@@ -40,6 +41,8 @@ class Animation:
 
     def start(self, *args):
         self.stop()
+        if self.start_callback is not None:
+            self.start_callback()
         self.start_time = time.time()
         self.scheduled = kx.schedule_interval(self._event, 1 / ANIMATION_FPS)
 
