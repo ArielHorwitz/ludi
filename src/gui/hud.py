@@ -5,6 +5,8 @@ import kvex as kx
 import game
 from config import DICE_IMAGES_DIR, PLAYER_COLORS
 
+from .animation import Animation, Interp
+
 DICE_IMAGES = [
     DICE_IMAGES_DIR / f"die{i}.png" for i in range(game.ROLL_MIN, game.ROLL_MAX + 1)
 ]
@@ -16,6 +18,13 @@ class Hud(kx.XAnchor):
         super().__init__()
         self.player_index = player_index
         self.color = PLAYER_COLORS[player_index]
+        self.pulse = Animation(
+            self._pulse_dice,
+            Interp.pulse,
+            speed=3,
+            guarantee_last=1,
+        )
+        self.highlighted_dice = []
         self.main_frame = kx.XBox(orientation="vertical")
         self.main_frame.make_bg(self.color.modified_value(0.5))
         # Spawn
@@ -105,28 +114,23 @@ class Hud(kx.XAnchor):
         self.progress_label.color = label_color
         self.log_label.color = label_color
         self.log_label.text = last_turn[3:] if last_turn else ""
+        self.highlighted_dice = highlight_dice
+        self.pulse.start() if highlight_dice else self.pulse.stop()
         for i, die_value in itertools.zip_longest(range(game.DICE_COUNT), player.dice):
-            highlight = i in highlight_dice
             sprite = self.dice_sprites[i]
-            label = self.dice_labels[i]
-            image_source = None if die_value is None else DICE_IMAGES[die_value - 1]
-            saturated_color = self.color.modified_saturation(0.7)
-            sprite_color = kx.XColor() if highlight else saturated_color
-            invis = kx.XColor(a=0)
             if die_value is None:
-                sprite.color = invis.rgba
-                label.make_bg(invis)
-                label.text = ""
-                continue
-            if image_source is None:
-                sprite.color = invis.rgba
-                label.make_bg(sprite_color)
-                label.text = str(die_value)
+                sprite.color = 0, 0, 0, 0
+                sprite.source = ""
             else:
-                sprite.color = sprite_color.rgba
-                sprite.source = str(image_source)
-                label.make_bg(invis)
-                label.text = ""
+                sprite.color = 1, 1, 1, 1
+                sprite.source = str(DICE_IMAGES[die_value - 1])
+
+    def _pulse_dice(self, modulated: float):
+        color = self.color
+        sprites = self.dice_sprites
+        for i in self.highlighted_dice:
+            sprite = sprites[i]
+            sprite.color = color.modified_saturation(modulated).rgba
 
 
 def remove_from_parent(widget):
