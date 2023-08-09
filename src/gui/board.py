@@ -66,7 +66,7 @@ class GameWidget(kx.XAnchor):
             if self.state.winner is None:
                 config.play_event_sfx(last_event)
             else:
-                config.play_victory_sfx()
+                config.play_sfx(config.VICTORY_SFX)
         self._clear_selections()
         self._refresh_widgets()
 
@@ -196,6 +196,7 @@ class GameWidget(kx.XAnchor):
             self.client.send(pgnet.Packet("move", payload), self._on_response)
 
     def _cancel(self):
+        config.play_sfx(config.UI_CLICK2)
         self.client.flush_queue()
         self._clear_selections()
         self._refresh_widgets()
@@ -209,6 +210,7 @@ class GameWidget(kx.XAnchor):
             if index in player.movable_units:
                 self.selected_unit = index
                 self.selected_die = None
+                config.play_sfx(config.UI_CLICK1)
                 logger.debug(f"selected unit: {index}")
             else:
                 logger.debug(f"cannot select unit: {index}")
@@ -217,6 +219,7 @@ class GameWidget(kx.XAnchor):
             valid_index = 0 <= index < len(player.dice)
             if valid_index and unit.can_use_die(player.dice[index]):
                 self.selected_die = index
+                config.play_sfx(config.UI_CLICK1)
                 logger.debug(f"selected die: {index}")
             else:
                 logger.debug(f"cannot select die: {index}")

@@ -37,8 +37,9 @@ logger.info(f"{DICE_SFX_DIR=}")
 for f in (DICE_SFX_DIR).iterdir():
     logger.info(f)
 DICE_SFX = tuple(kx.SoundLoader.load(str(f)) for f in (DICE_SFX_DIR).iterdir())
+EVENT_SFX_DIR = SFX_DIR / "events"
 EVENT_SFX_FILES = {
-    evtype: ASSET_DIR / "sfx" / f"{evtype.name.lower().replace('_', '-')}.wav"
+    evtype: EVENT_SFX_DIR / f"{evtype.name.lower().replace('_', '-')}.wav"
     for evtype in EventType
     if evtype != EventType.DICE_ROLLED
 }
@@ -46,6 +47,8 @@ EVENT_SFX = {
     evtype: kx.SoundLoader.load(str(path)) for evtype, path in EVENT_SFX_FILES.items()
 }
 VICTORY_SFX = kx.SoundLoader.load(str(SFX_DIR / "victory.wav"))
+UI_CLICK1 = kx.SoundLoader.load(str(SFX_DIR / "ui-click1.wav"))
+UI_CLICK2 = kx.SoundLoader.load(str(SFX_DIR / "ui-click2.wav"))
 
 
 def play_sfx(sfx):
@@ -60,7 +63,3 @@ def play_event_sfx(event: EventType):
     if event == EventType.DICE_ROLLED:
         return play_sfx(random.choice(DICE_SFX))
     play_sfx(EVENT_SFX[event])
-
-
-def play_victory_sfx():
-    play_sfx(VICTORY_SFX)
