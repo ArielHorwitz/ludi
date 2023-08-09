@@ -2,6 +2,8 @@
 
 A multiplayer game inspired by Ludo with modified gameplay, built on top of [Mousefox](https://github.com/ArielHorwitz/mousefox).
 
+![Preview Image](/preview.png)
+
 ## Install From Source
 It is recommended to use a [virtual environment](https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/) when installing packages:
 ```console
