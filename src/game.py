@@ -163,6 +163,7 @@ class GameState:
             die_value = random.randint(ROLL_MIN, ROLL_MAX)
             player.dice.append(die_value)
             self.log[-1] += tokenizer.roll_die(die_value)
+        player.dice.sort()
         return True
 
     def move_unit(self, unit_index: int, die_index: int) -> bool:
