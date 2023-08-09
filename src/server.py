@@ -54,17 +54,20 @@ class GameServer(pgnet.Game):
 
     # Logic
     def update(self):
+        player = self.state.get_player()
         if self.state.winner is not None:
             return
-        if not self.is_bot(self.state.get_player().index):
+        if not self.is_bot(player.index):
             self.next_bot_play = None
             return
         if self.next_bot_play is None:
             self.next_bot_play = time.time() + self.bot_play_interval
-        elif self.next_bot_play < time.time():
-            self.state.play_bot()
-            self.print_logs()
-            self.next_bot_play = time.time() + self.bot_play_interval
+            return
+        if self.next_bot_play > time.time():
+            return
+        self.state.play_bot()
+        self.print_logs()
+        self.next_bot_play = time.time() + self.bot_play_interval
 
     def handle_heartbeat(self, packet: Packet) -> Response:
         state_hash = hash(self.state)
@@ -94,7 +97,9 @@ class GameServer(pgnet.Game):
         return result
 
     def print_logs(self):
-        logger.debug("Logs:\n" + "\n".join(self.state.log[-5:]))
+        logger.debug(
+            "Logs (turn: {self.state.turn}):\n" + "\n".join(self.state.log[-5:])
+        )
 
     # User commands
     def _user_roll(self, packet: Packet) -> Response:

@@ -294,7 +294,7 @@ class GameState:
         logger.debug(
             "\n".join(
                 [
-                    f"Bot Evaluation for: {player.name}",
+                    f"Bot Evaluation for: {player.name} (turn {self.turn})",
                     "\n".join(self.log[-2:]),
                     f"          {turn=}",
                     f"{finished_units=}",

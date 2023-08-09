@@ -213,7 +213,9 @@ class GameWidget(kx.XAnchor):
             else:
                 logger.debug(f"cannot select unit: {index}")
         elif self.selected_die is None:
-            if player.units[self.selected_unit].can_use_die(index):
+            unit = player.units[self.selected_unit]
+            valid_index = 0 <= index < len(player.dice)
+            if valid_index and unit.can_use_die(player.dice[index]):
                 self.selected_die = index
                 logger.debug(f"selected die: {index}")
             else:
