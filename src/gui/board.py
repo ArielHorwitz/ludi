@@ -9,6 +9,7 @@ import config
 import game
 from tokenizer import EventType, tokenize_turn
 
+from .animation import Animation, Interp
 from .hud import Hud
 from .unit import UnitSprite
 
@@ -143,7 +144,16 @@ class GameWidget(kx.XAnchor):
         rolled = not turn_player.missing_dice
         unit_selected = self.selected_unit is not None
         die_selected = self.selected_die is not None
+        highlight_squares = []
+        highlight_units = []
+        highlight_dice = []
         match rolled, unit_selected, die_selected:
+            case True, True, True:
+                highlight_units = [self.selected_unit]
+                highlight_dice = [self.selected_die]
+                die_value = turn_player.dice[self.selected_die]
+                unit = turn_player.units[self.selected_unit]
+                highlight_squares = [unit.get_position(turn_index, add_distance=die_value)]
             case True, True, True:
                 highlight_units = [self.selected_unit]
                 highlight_dice = [self.selected_die]
@@ -155,12 +165,9 @@ class GameWidget(kx.XAnchor):
                 ]
             case True, False, _:
                 highlight_units = turn_player.movable_units
-                highlight_dice = []
-            case False, _, _:
-                highlight_units = []
-                highlight_dice = []
         logger.debug(f"{self.selected_unit=} {highlight_units=}")
-        logger.debug(f" {self.selected_die=} {highlight_dice=}")
+        logger.debug(f"{self.selected_die=} {highlight_dice=}")
+        logger.debug(f"{highlight_squares=}")
         # Apply loop
         for player, sprites in zip(self.state.players, self.unit_sprites):
             my_turn = player.index == turn_index
@@ -180,6 +187,8 @@ class GameWidget(kx.XAnchor):
                 elif unit.position == game.Position.TRACK:
                     unit_pos = unit.get_position(player.index)
                     self.track_squares[unit_pos].add_unit(sprite)
+        for i, square in enumerate(self.track_squares):
+            square.pulse.start() if i in highlight_squares else square.pulse.stop()
         if turn_index == self.state.winner:
             self.huds[turn_index].set_winner()
 
@@ -241,21 +250,23 @@ class GameWidget(kx.XAnchor):
 class TrackSquare(kx.XAnchor):
     def __init__(self, position: int):
         super().__init__()
+        self.position = position
+        self.color = config.PLAYER_COLORS[position // game.BOARD_SIZE]
         self.unit_frame = kx.XRelative()
         self.label = kx.XLabel(
             text=str(position % game.BOARD_SIZE),
             enable_theming=False,
         )
-        color = config.PLAYER_COLORS[position // game.BOARD_SIZE]
         if position in game.STARTING_POSITIONS:
-            color = color.modified_value(0.5)
             self.label.text = ""
-        elif position in game.STAR_POSITIONS:
-            color = color.modified_saturation(0.5).modified_value(0.4)
-        else:
-            color = color.modified_value(0.075)
         self.add_widgets(self.label, self.unit_frame)
-        self.make_bg(color)
+        self.make_bg(self._get_bg_color())
+        self.pulse = Animation(
+            self._pulse,
+            Interp.pulse,
+            speed=3,
+            end_callback=self._end_pulse,
+        )
 
     def add_unit(self, sprite: UnitSprite):
         if sprite.parent:
@@ -269,3 +280,17 @@ class TrackSquare(kx.XAnchor):
             (x_offset, self.height / 2),
         ][sprite.player_index]
         self.unit_frame.add_widget(sprite)
+
+    def _get_bg_color(self):
+        if self.position in game.STARTING_POSITIONS:
+            return self.color.modified_value(0.5)
+        elif self.position in game.STAR_POSITIONS:
+            return self.color.modified_saturation(0.5).modified_value(0.4)
+        else:
+            return self.color.modified_value(0.075)
+
+    def _pulse(self, modulated: float):
+        self.make_bg(self.color.modified_value(0.5).modified_saturation(modulated))
+
+    def _end_pulse(self):
+        self.make_bg(self._get_bg_color())
