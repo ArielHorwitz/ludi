@@ -88,6 +88,7 @@ class Hud(kx.XAnchor):
 
     def add_to_finishline(self, index, sprite):
         remove_from_parent(sprite)
+        sprite.set_size(hx=0.5, hy=0.5)
         self.finishline[index].add_widget(sprite)
         self.finish_label.text = ""
 
