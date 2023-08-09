@@ -71,8 +71,10 @@ class Unit:
     def __hash__(self) -> int:
         return hash((self.index, self.position, self.track_distance))
 
-    def get_position(self, player_index: int):
-        track_position = self.track_distance + STARTING_POSITIONS[player_index]
+    def get_position(self, player_index: int, *, add_distance: float = 0):
+        track_position = sum(
+            (STARTING_POSITIONS[player_index], self.track_distance, add_distance)
+        )
         return track_position % TRACK_SIZE
 
     @property
