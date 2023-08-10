@@ -153,7 +153,7 @@ class GameWidget(kx.XAnchor):
                 highlight_dice = [self.selected_die]
                 die_value = turn_player.dice[self.selected_die]
                 unit = turn_player.units[self.selected_unit]
-                highlight_squares = [unit.get_position(turn_index, add_distance=die_value)]
+                highlight_squares = [unit.get_position(add_distance=die_value)]
             case True, True, True:
                 highlight_units = [self.selected_unit]
                 highlight_dice = [self.selected_die]
@@ -176,17 +176,16 @@ class GameWidget(kx.XAnchor):
             for unit, sprite in reversed(list(zip(player.units, sprites))):
                 highlight = my_turn and unit.index in highlight_units
                 sprite.pulse.start() if highlight else sprite.pulse.stop()
-                assert unit.position in game.Position
-                if unit.position == game.Position.FINISH:
+                if unit.finished:
                     sprite.set_size(hx=0.9, hy=0.9)
                     sprite.fade_finish()
                     hud.add_to_finishline(sprite.unit_index, sprite)
-                elif unit.position == game.Position.SPAWN:
+                elif unit.in_spawn:
                     sprite.set_size(hx=0.5, hy=0.5)
                     hud.add_to_spawnbox(sprite.unit_index, sprite)
-                elif unit.position == game.Position.TRACK:
-                    unit_pos = unit.get_position(player.index)
-                    self.track_squares[unit_pos].add_unit(sprite)
+                else:
+                    assert unit.on_track
+                    self.track_squares[unit.position].add_unit(sprite)
         for i, square in enumerate(self.track_squares):
             square.pulse.start() if i in highlight_squares else square.pulse.stop()
         if turn_index == self.state.winner:

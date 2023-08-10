@@ -55,7 +55,7 @@ class BotMove(NamedTuple):
     state: "GameState"
 
 
-class Position(Enum):
+class Area(Enum):
     SPAWN = 1
     TRACK = 2
     FINISH = 3
@@ -65,40 +65,81 @@ class Position(Enum):
 @dataclass
 class Unit:
     index: int
-    position: Position = Position.SPAWN
+    player_index: int
+    area: Area = Area.SPAWN
     track_distance: int = 0
 
     def __hash__(self) -> int:
-        return hash((self.index, self.position, self.track_distance))
-
-    def get_position(self, player_index: int, *, add_distance: float = 0):
-        track_position = sum(
-            (STARTING_POSITIONS[player_index], self.track_distance, add_distance)
-        )
-        return track_position % TRACK_SIZE
+        return hash((self.player_index, self.index, self.area, self.track_distance))
 
     @property
     def name(self) -> str:
         return UNIT_NAMES[self.index]
 
+    def get_position(self, *, add_distance: int = 0) -> Optional[int]:
+        if not self.on_track:
+            return None
+        start = STARTING_POSITIONS[self.player_index]
+        return (start + self.track_distance + add_distance) % TRACK_SIZE
+
+    @property
+    def position(self) -> Optional[int]:
+        return self.get_position()
+
+    @property
+    def in_spawn(self) -> bool:
+        return self.area == Area.SPAWN
+
+    @property
+    def on_track(self) -> bool:
+        return self.area == Area.TRACK
+
+    @property
+    def finished(self) -> bool:
+        return self.area == Area.FINISH
+
+    def move_to_spawn(self):
+        self.area = Area.SPAWN
+        self.track_distance = 0
+
+    def move_to_track(self, starting_handicap: bool = False):
+        self.area = Area.TRACK
+        if starting_handicap:
+            self.track_distance = TURN_ORDER_HANDICAP[self.player_index]
+        else:
+            self.track_distance = 0
+
+    def move_to_finish(self):
+        self.area = Area.FINISH
+        self.track_distance = TRACK_SIZE
+
     def can_use_die(self, die_value: int) -> bool:
-        if self.position == Position.FINISH:
+        if self.finished:
             return False
-        if self.position == Position.SPAWN:
+        if self.in_spawn:
             return die_value in RESCUE_ROLLS
         return True
+
+    @property
+    def is_safe(self) -> bool:
+        assert None not in SAFE_POSITIONS
+        return self.position in SAFE_POSITIONS
 
 
 @dataclass_json
 @dataclass
 class Player:
     index: int
-    units: list[Unit] = field(
-        default_factory=lambda: [Unit(i) for i in range(UNIT_COUNT)]
-    )
+    units: list[Unit] = field(default_factory=list)
     dice: list[int] = field(
         default_factory=lambda: [i + ROLL_MIN for i in range(DICE_COUNT - 1)]
     )
+
+    def __post_init__(self):
+        if len(self.units) == 0:
+            self.units.extend([Unit(i, self.index) for i in range(UNIT_COUNT)])
+        else:
+            assert len(self.units) == UNIT_COUNT
 
     def __hash__(self) -> int:
         return hash((self.index, tuple(self.units), tuple(self.dice)))
@@ -116,7 +157,7 @@ class Player:
 
     @property
     def movable_units(self) -> tuple[int, ...]:
-        return tuple(u.index for u in self.units if u.position != Position.FINISH)
+        return tuple(u.index for u in self.units if not u.finished)
 
 
 @dataclass_json
@@ -136,8 +177,7 @@ class GameState:
         # Start all units
         for player in game.players:
             unit = player.units[0]
-            unit.position = Position.TRACK
-            unit.track_distance = TURN_ORDER_HANDICAP[player.index]
+            unit.move_to_track(starting_handicap=True)
         return game
 
     def __hash__(self) -> int:
@@ -149,12 +189,11 @@ class GameState:
     def roll_dice(self) -> bool:
         player = self.get_player()
         # Rescue to have at least one unit on the track
-        if all(unit.position != Position.TRACK for unit in player.units):
+        if not any(unit.on_track for unit in player.units):
             for unit in player.units:
-                if unit.position == Position.SPAWN:
+                if unit.in_spawn:
                     # Rescue
-                    unit.position = Position.TRACK
-                    unit.track_distance = 0
+                    unit.move_to_track()
                     break
         # Add dice until we have correct dice count
         if len(player.dice) == DICE_COUNT:
@@ -176,34 +215,29 @@ class GameState:
             return False
         unit = player.units[unit_index]
         die_value = player.dice[die_index]
-        if unit.position == Position.FINISH:
+        if unit.finished:
             return False
-        elif unit.position == Position.SPAWN:
+        elif unit.in_spawn:
             if die_value not in RESCUE_ROLLS:
                 return False
             player.dice.pop(die_index)
-            unit.position = Position.TRACK
-            unit.track_distance = 0
+            unit.move_to_track()
             self.log[-1] += tokenizer.unit_spawn(unit.name, die_value)
             return True
         else:
-            assert unit.position == Position.TRACK
+            assert unit.on_track
             player.dice.pop(die_index)
             unit.track_distance += die_value
             turn_ends = True
             if unit.track_distance >= TRACK_SIZE:
-                unit.track_distance = TRACK_SIZE
-                unit.position = Position.FINISH
+                unit.move_to_finish()
                 self.log[-1] += tokenizer.unit_finish(unit.name, die_value)
-                if all(unit.position == Position.FINISH for unit in player.units):
+                if all(unit.finished for unit in player.units):
                     self.winner = player.index
                     self.log[-1] += tokenizer.Symbol.GAME_OVER
                     turn_ends = False
             else:
-                captured = self._do_capture(
-                    player.index,
-                    unit.get_position(player.index),
-                )
+                captured = self._do_capture(unit)
                 if captured:
                     turn_ends = False
                     self.log[-1] += tokenizer.unit_capture(
@@ -217,24 +251,19 @@ class GameState:
                 self.log.append(tokenizer.turn_start(self.get_player().name))
             return True
 
-    def _do_capture(
-        self,
-        player_index: int,
-        capture_position: int,
-    ) -> list[tuple[str, str]]:
+    def _do_capture(self, unit: Unit) -> list[tuple[str, str]]:
+        assert unit.on_track
+        capture_position = unit.position
         if capture_position in SAFE_POSITIONS:
             return []
         captured = []
-        for player in self.players:
-            if player.index == player_index:
-                # Ignore friendly units
+        for enemy_player in self.players:
+            if enemy_player.index == unit.player_index:
                 continue
-            for unit in player.units:
-                if capture_position == unit.get_position(player.index):
-                    # Capture
-                    unit.position = Position.SPAWN
-                    unit.track_distance = 0
-                    captured.append((player.name, unit.name))
+            for enemy_unit in enemy_player.units:
+                if capture_position == enemy_unit.position:
+                    enemy_unit.move_to_spawn()
+                    captured.append((enemy_player.name, enemy_unit.name))
         return captured
 
     def play_bot(self):
@@ -259,39 +288,32 @@ class GameState:
 
     def bot_evaluation(self, player_index: int) -> float:
         player = self.players[player_index]
-        turns_away = (player.index - self.get_player().index) % PLAYER_COUNT
-        turn = (PLAYER_COUNT - turns_away - 1) / PLAYER_COUNT
         units = player.units
-        finished_units = [u for u in units if u.position == Position.FINISH]
-        finish = len(finished_units) / UNIT_COUNT
-        spawning_units = [u for u in units if u.position == Position.SPAWN]
-        spawn = len(spawning_units) / UNIT_COUNT
-        safe_units = [
-            u
-            for u in units
-            if (
-                u.position == Position.TRACK
-                and u.get_position(player_index) in SAFE_POSITIONS
-            )
-        ]
-        safe = len(safe_units) / UNIT_COUNT
-        progress = player.get_progress()
-        total_enemy_progress = sum(p.get_progress() for p in self.players) - progress
-        enemy_progress = total_enemy_progress / (PLAYER_COUNT - 1)
+        turns_away = (player.index - self.get_player().index) % PLAYER_COUNT
+        turn_normalized = (PLAYER_COUNT - turns_away - 1) / PLAYER_COUNT
+        finished_units = [u for u in units if u.finished]
+        finish_normalized = len(finished_units) / UNIT_COUNT
+        spawning_units = [u for u in units if u.in_spawn]
+        spawn_normalized = len(spawning_units) / UNIT_COUNT
+        safe_units = [u for u in units if u.on_track and u.is_safe]
+        safe_normalized = len(safe_units) / UNIT_COUNT
+        all_progress = [p.get_progress() for p in self.players]
+        player_progress_normalized = all_progress.pop(player_index)
+        enemy_progress_normalized = sum(all_progress) / len(all_progress)
         if DICE_COUNT > 1:
             dice_value = sum(player.dice) / (DICE_COUNT - 1)
-            dice = (dice_value - ROLL_MIN) / (ROLL_MAX - ROLL_MIN)
+            dice_normalized = (dice_value - ROLL_MIN) / (ROLL_MAX - ROLL_MIN)
         else:
-            dice = 0
+            dice_normalized = 0
         total = sum(
             [
-                turn * BotEvalWeights.turn,
-                finish * BotEvalWeights.finish,
-                safe * BotEvalWeights.safe,
-                spawn * BotEvalWeights.spawn,
-                progress * BotEvalWeights.progress,
-                enemy_progress * BotEvalWeights.enemy_progress,
-                dice * BotEvalWeights.dice,
+                turn_normalized * BotEvalWeights.turn,
+                finish_normalized * BotEvalWeights.finish,
+                safe_normalized * BotEvalWeights.safe,
+                spawn_normalized * BotEvalWeights.spawn,
+                player_progress_normalized * BotEvalWeights.progress,
+                enemy_progress_normalized * BotEvalWeights.enemy_progress,
+                dice_normalized * BotEvalWeights.dice,
             ]
         )
         logger.debug(
@@ -299,14 +321,14 @@ class GameState:
                 [
                     f"Bot Evaluation for: {player.name} (turn {self.turn})",
                     "\n".join(self.log[-2:]),
-                    f"          {turn=}",
-                    f"{finished_units=}",
-                    f"    {safe_units=}",
-                    f"{spawning_units=}",
-                    f"      {progress=}",
-                    f"{enemy_progress=}",
-                    f"          {dice=}",
-                    f"         {total=}",
+                    f"                {turns_away=}",
+                    f"            {finished_units=}",
+                    f"                {safe_units=}",
+                    f"            {spawning_units=}",
+                    f"{player_progress_normalized=}",
+                    f" {enemy_progress_normalized=}",
+                    f"           {dice_normalized=}",
+                    f"                     {total=}",
                 ]
             )
         )
