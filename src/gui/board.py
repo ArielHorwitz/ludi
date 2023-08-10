@@ -32,9 +32,6 @@ class GameWidget(kx.XAnchor):
         logger.info("Widgets created.")
         hotkeys = self.app.game_controller
         hotkeys.register("force refresh", "^ f5", self._full_refresh)
-        set_botspeed = self._set_bot_speed
-        hotkeys.register("speed+ bots", "-", partial(set_botspeed, 0.5))
-        hotkeys.register("speed- bots", "=", partial(set_botspeed, -0.5))
         hotkeys.register("leave", "^ escape", self.client.leave_game)
         hotkeys.register("proceed", "spacebar", self._proceed)
         hotkeys.register("cancel", "escape", self._cancel)
@@ -43,6 +40,9 @@ class GameWidget(kx.XAnchor):
             hotkeys.register(control, keynumber)  # Number keys
             hotkeys.register(control, f"f{keynumber}")  # F keys
             hotkeys.bind(control, partial(self._select, i))
+        hotkeys.register("spectate", "^+ s", self._spectate)
+        hotkeys.register("speed+ bots", "-", partial(self._set_bot_speed, 0.5))
+        hotkeys.register("speed- bots", "=", partial(self._set_bot_speed, -0.5))
         client.on_heartbeat = self.on_heartbeat
         client.heartbeat_payload = self.heartbeat_payload
         self.bind(size=self._trigger_refresh)
@@ -244,6 +244,9 @@ class GameWidget(kx.XAnchor):
         self.client.send(
             pgnet.Packet("set_bot_play_interval", payload), self._on_response
         )
+
+    def _spectate(self):
+        self.client.send(pgnet.Packet("spectate"), self._on_response)
 
 
 class TrackSquare(kx.XAnchor):

@@ -27,33 +27,61 @@ class GameServer(pgnet.Game):
 
     @property
     def persistent(self):
-        return self.state.turn > 0 and self.state.winner is None
+        return all(
+            (
+                self.state.turn > 0,
+                self.state.winner is None,
+                self._humans_playing,
+            )
+        )
+
+    @property
+    def _humans_playing(self) -> bool:
+        return any(p is not None for p in self.human_players)
 
     def get_save_string(self) -> str:
         return self.state.to_json()
 
     def user_joined(self, player: str):
-        if player in self.connected_players:
-            return
         self.connected_players.add(player)
-        if None in self.human_players:
-            index = self.human_players.index(None)
-            self.human_players[index] = player
-            logger.info(f"Joined as {self.state.players[index].name}: {player}")
+        logger.info(f"Joined: {player}")
+        logger.debug(f"Connected players: {self.connected_players}")
+        index = self._assign_player(player)
+        if index is not None:
+            logger.info(f"Playing as {self.state.players[index].name}: {player}")
         else:
             logger.info(f"Spectating: {player}")
 
     def user_left(self, player: str):
-        if player not in self.connected_players:
-            return
-        self.connected_players.remove(player)
+        if player in self.connected_players:
+            self.connected_players.remove(player)
         logger.info(f"Left: {player}")
+        logger.debug(f"Connected players: {self.connected_players}")
+
+    def _assign_player(self, player) -> Optional[int]:
+        if player in self.human_players:
+            return self.human_players.index(player)
+        if None in self.human_players:
+            index = self.human_players.index(None)
+            self.human_players[index] = player
+            return index
+        return None
+
+    def _unassign_player(self, player) -> bool:
+        unassigned = False
+        while player in self.human_players:
+            index = self.human_players.index(player)
+            self.human_players[index] = None
+            unassigned = True
+        return unassigned
 
     def is_bot(self, player_index: int):
         return self.human_players[player_index] is None
 
     # Logic
     def update(self):
+        if not self.connected_players:
+            return
         player = self.state.get_player()
         if self.state.winner is not None:
             return
@@ -126,3 +154,11 @@ class GameServer(pgnet.Game):
         self.bot_play_interval = max(0, min(MAX_BOT_PLAY_INTERVAL, value + delta))
         self.next_bot_play = time.time()
         return Response(f"Bot play interval: {self.bot_play_interval}")
+
+    def _user_spectate(self, packet: Packet) -> Response:
+        if self._unassign_player(packet.username):
+            return Response("Spectating.")
+        index = self._assign_player(packet.username)
+        if index is not None:
+            return Response(f"Rejoined as: {self.state.players[index].name}")
+        return Response("Cannot join (game is full?)")
